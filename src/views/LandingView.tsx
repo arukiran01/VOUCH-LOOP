@@ -21,6 +21,7 @@ import {
   User
 } from 'lucide-react';
 import { Coupon, Review, User as UserType } from '../types';
+import { INITIAL_USERS } from '../data/mockData';
 
 const renderBrandLogo = (brandName: string) => {
   const normalized = brandName ? brandName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
@@ -259,20 +260,15 @@ export default function LandingView({
       const data = await res.json();
       
       if (res.ok && data.success) {
-        if (data.verificationRequired) {
-          setRegisterSuccess('Verification email sent! Check inbox / spam to verify.');
-          if (showToast) showToast('Verification email sent securely.', 'info');
-        } else {
-          // Safe credentials storage to maintain auto-login correctly
-          const userToSave = { ...data.user, savedPassword: passwordRegister };
-          localStorage.setItem('vouchloop_saved_session', JSON.stringify(userToSave));
+        // Safe credentials storage to maintain auto-login correctly
+        const userToSave = { ...data.user, savedPassword: passwordRegister };
+        localStorage.setItem('vouchloop_saved_session', JSON.stringify(userToSave));
 
-          if (showToast) {
-            showToast(data.message || 'New peer wallet initialized with ₹5,000 credit!', 'success');
-          }
-          if (onLoginSuccess) {
-            onLoginSuccess(data.user);
-          }
+        if (showToast) {
+          showToast(data.message || 'Account created successfully! Received ₹5,000 starting wallet credit.', 'success');
+        }
+        if (onLoginSuccess) {
+          onLoginSuccess(data.user);
         }
       } else {
         throw new Error(data.error || 'Registration failed.');

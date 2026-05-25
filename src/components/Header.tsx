@@ -203,6 +203,14 @@ export default function Header({
             >
               FAQ Support
             </button>
+            {sessionUser?.role === 'admin' && (
+              <button 
+                onClick={() => setActiveTab('admin')}
+                className={`hover:text-rose-600 text-rose-500 transition-colors cursor-pointer ${activeTab === 'admin' ? 'font-extrabold text-rose-700' : ''}`}
+              >
+                Admin Console
+              </button>
+            )}
           </nav>
 
           {/* Action Hub and Profile */}

@@ -182,7 +182,7 @@ export default function App() {
       // 2. Coupons/Trades list fetch with robust fallback
       try {
         const cpnData = await fetchJsonSafe('/api/coupons?status=all');
-        if (cpnData.success && Array.isArray(cpnData.coupons)) {
+        if (cpnData.success && Array.isArray(cpnData.coupons) && cpnData.coupons.length > 0) {
           setCoupons(cpnData.coupons);
           localStorage.setItem('vouchloop_coupons', JSON.stringify(cpnData.coupons));
         } else {
@@ -192,7 +192,13 @@ export default function App() {
         const saved = localStorage.getItem('vouchloop_coupons');
         if (saved) {
           try {
-            setCoupons(JSON.parse(saved));
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setCoupons(parsed);
+            } else {
+              localStorage.setItem('vouchloop_coupons', JSON.stringify(INITIAL_COUPONS));
+              setCoupons(INITIAL_COUPONS);
+            }
           } catch (e) {
             localStorage.setItem('vouchloop_coupons', JSON.stringify(INITIAL_COUPONS));
             setCoupons(INITIAL_COUPONS);
@@ -206,7 +212,7 @@ export default function App() {
       // 3. Financial history log fetch
       try {
         const histData = await fetchJsonSafe('/api/wallet/history');
-        if (histData.success && Array.isArray(histData.history)) {
+        if (histData.success && Array.isArray(histData.history) && histData.history.length > 0) {
           setTxHistory(histData.history);
           localStorage.setItem('vouchloop_tx_history', JSON.stringify(histData.history));
         } else {
@@ -216,7 +222,13 @@ export default function App() {
         const saved = localStorage.getItem('vouchloop_tx_history');
         if (saved) {
           try {
-            setTxHistory(JSON.parse(saved));
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setTxHistory(parsed);
+            } else {
+              localStorage.setItem('vouchloop_tx_history', JSON.stringify(INITIAL_TRANSACTIONS));
+              setTxHistory(INITIAL_TRANSACTIONS);
+            }
           } catch (e) {
             localStorage.setItem('vouchloop_tx_history', JSON.stringify(INITIAL_TRANSACTIONS));
             setTxHistory(INITIAL_TRANSACTIONS);
@@ -230,7 +242,7 @@ export default function App() {
       // 4. Review feedback fetch
       try {
         const revData = await fetchJsonSafe('/api/reviews');
-        if (revData.success && Array.isArray(revData.reviews)) {
+        if (revData.success && Array.isArray(revData.reviews) && revData.reviews.length > 0) {
           setReviews(revData.reviews);
           localStorage.setItem('vouchloop_reviews', JSON.stringify(revData.reviews));
         } else {
@@ -240,7 +252,13 @@ export default function App() {
         const saved = localStorage.getItem('vouchloop_reviews');
         if (saved) {
           try {
-            setReviews(JSON.parse(saved));
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setReviews(parsed);
+            } else {
+              localStorage.setItem('vouchloop_reviews', JSON.stringify(INITIAL_REVIEWS));
+              setReviews(INITIAL_REVIEWS);
+            }
           } catch (e) {
             localStorage.setItem('vouchloop_reviews', JSON.stringify(INITIAL_REVIEWS));
             setReviews(INITIAL_REVIEWS);
@@ -420,12 +438,26 @@ export default function App() {
     try {
       const updatedUser = { ...sessionUser, role: nextRole as 'user' | 'admin' };
       setSessionUser(updatedUser);
+      localStorage.setItem('vouchloop_saved_session', JSON.stringify(updatedUser));
+
+      // Sync user index in local mock users database
+      const currentUsersStr = localStorage.getItem('vouchloop_users');
+      if (currentUsersStr) {
+        try {
+          const currentUsers = JSON.parse(currentUsersStr);
+          const userIdx = currentUsers.findIndex((u: any) => u.id === sessionUser.id || u.email.toLowerCase() === sessionUser.email.toLowerCase());
+          if (userIdx !== -1) {
+            currentUsers[userIdx].role = nextRole;
+            localStorage.setItem('vouchloop_users', JSON.stringify(currentUsers));
+          }
+        } catch (e) {}
+      }
       
       // Update endpoint for compliance
       await fetch('/api/auth/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: sessionUser.name, email: sessionUser.email })
+        body: JSON.stringify({ role: nextRole })
       });
       
       showToast(`User profile role simulation switched to: ${nextRole.toUpperCase()}`, 'info');
@@ -441,15 +473,14 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      const res = await fetch('/api/auth/logout', { method: 'POST' });
-      if (res.ok) {
-        setSessionUser(null);
-        localStorage.removeItem('vouchloop_saved_session');
-        showToast('Successfully logged out of VouchLoop session.', 'info');
-      }
+      await fetch('/api/auth/logout', { method: 'POST' });
     } catch (err) {
-      showToast('Logout network mismatch.', 'error');
+      console.warn('Backend logout failed, proceeding with local logout:', err);
     }
+    setSessionUser(null);
+    localStorage.removeItem('vouchloop_saved_session');
+    setActiveTab('landing');
+    showToast('Successfully logged out of VouchLoop session.', 'info');
   };
 
   // Coupon Buying transaction with Escrow holding rules
