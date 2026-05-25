@@ -1,0 +1,7 @@
+{
+  "name": "node-domexception",
+  "version": "1.0.0",
+  "description": "Native DOMException placeholder to bypass deprecation",
+  "main": "index.js",
+  "type": "commonjs"
+}
