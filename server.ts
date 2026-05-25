@@ -704,7 +704,7 @@ app.post('/api/auth/login', async (req, res) => {
       if (!user) {
         const emailPrefix = trimmedEmail.split('@')[0];
         const rawName = emailPrefix.replace(/[._-]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Peer Trader';
-        const role = (trimmedEmail.includes('admin') || db.users.length === 0) ? 'admin' : 'user';
+        const role = (trimmedEmail === 'arukiranreddy@gmail.com') ? 'admin' : 'user';
         
         user = {
           id: data.user?.id || `usr-${Date.now()}`,
@@ -741,7 +741,7 @@ app.post('/api/auth/login', async (req, res) => {
   if (!user) {
     const emailPrefix = trimmedEmail.split('@')[0];
     const rawName = emailPrefix.replace(/[._-]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Peer Trader';
-    const role = (trimmedEmail.includes('admin') || db.users.length === 0) ? 'admin' : 'user';
+    const role = (trimmedEmail === 'arukiranreddy@gmail.com') ? 'admin' : 'user';
     user = {
       id: `usr-${Date.now()}`,
       name: rawName,
@@ -798,7 +798,7 @@ app.post('/api/auth/signup', async (req, res) => {
               if (!user) {
                 const emailPrefix = trimmedEmail.split('@')[0];
                 const rawName = emailPrefix.replace(/[._-]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Peer Trader';
-                const srole = (trimmedEmail.includes('admin') || db.users.length === 0) ? 'admin' : 'user';
+                const srole = (trimmedEmail === 'arukiranreddy@gmail.com') ? 'admin' : 'user';
                 user = {
                   id: logData.user.id,
                   name: rawName,
@@ -859,7 +859,7 @@ app.post('/api/auth/signup', async (req, res) => {
       
       const emailPrefix = trimmedEmail.split('@')[0];
       const derivedName = name || emailPrefix.replace(/[._-]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Peer Trader';
-      const finalRole = role || ((trimmedEmail.includes('admin') || db.users.length === 0) ? 'admin' : 'user');
+      const finalRole = (trimmedEmail === 'arukiranreddy@gmail.com') ? 'admin' : 'user';
       
       const newUser = {
         id: data.user?.id || `usr-${Date.now()}`,
@@ -900,7 +900,7 @@ app.post('/api/auth/signup', async (req, res) => {
   
   const emailPrefix = trimmedEmail.split('@')[0];
   const derivedName = name || emailPrefix.replace(/[._-]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Peer Trader';
-  const finalRole = role || ((trimmedEmail.includes('admin') || db.users.length === 0) ? 'admin' : 'user');
+  const finalRole = (trimmedEmail === 'arukiranreddy@gmail.com') ? 'admin' : 'user';
   
   const newUser = {
     id: `usr-${Date.now()}`,
@@ -1393,6 +1393,10 @@ app.get('/api/reviews', (req, res) => {
 // --- Admin Controls Panel APIs ---
 app.get('/api/admin/stats', (req, res) => {
   const db = readDB();
+  const activeUser = getActiveUser(db);
+  if (!activeUser || activeUser.role !== 'admin' || activeUser.email?.toLowerCase() !== 'arukiranreddy@gmail.com') {
+    return res.status(403).json({ success: false, error: 'Access denied. You are not authorized as administrator.' });
+  }
 
   const usersCount = db.users.length;
   const couponsCount = db.coupons.length;
@@ -1451,6 +1455,10 @@ app.post('/api/admin/coupon/:id/moderate', (req, res) => {
   const { action } = req.body; 
   
   const db = readDB();
+  const activeUser = getActiveUser(db);
+  if (!activeUser || activeUser.role !== 'admin' || activeUser.email?.toLowerCase() !== 'arukiranreddy@gmail.com') {
+    return res.status(403).json({ success: false, error: 'Access denied. You are not authorized as administrator.' });
+  }
   const cIndex = db.coupons.findIndex((c: any) => c.id === id);
   if (cIndex === -1) {
     return res.status(404).json({ success: false, error: 'Listing not found.' });
@@ -1475,6 +1483,10 @@ app.post('/api/admin/withdrawal/:id/approve', (req, res) => {
   const { action } = req.body;
 
   const db = readDB();
+  const activeUser = getActiveUser(db);
+  if (!activeUser || activeUser.role !== 'admin' || activeUser.email?.toLowerCase() !== 'arukiranreddy@gmail.com') {
+    return res.status(403).json({ success: false, error: 'Access denied. You are not authorized as administrator.' });
+  }
   const tIndex = db.transactions.findIndex((t: any) => t.id === id);
   if (tIndex === -1) {
     return res.status(404).json({ success: false, error: 'Transaction log link not found.' });
@@ -1501,6 +1513,10 @@ app.post('/api/admin/withdrawal/:id/approve', (req, res) => {
 // Standard Bookkeeping Ledger Report (No AI!)
 app.get('/api/admin/audit', (req, res) => {
   const db = readDB();
+  const activeUser = getActiveUser(db);
+  if (!activeUser || activeUser.role !== 'admin' || activeUser.email?.toLowerCase() !== 'arukiranreddy@gmail.com') {
+    return res.status(403).json({ success: false, error: 'Access denied. You are not authorized as administrator.' });
+  }
 
   const totalUsers = db.users.length;
   const couponCount = db.coupons.length;

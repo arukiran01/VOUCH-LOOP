@@ -270,7 +270,7 @@ export default function App() {
       }
 
       // 5. Admin statistics
-      if (activeUser?.role === 'admin') {
+      if (activeUser?.role === 'admin' && activeUser?.email?.toLowerCase() === 'arukiranreddy@gmail.com') {
         try {
           const adData = await fetchJsonSafe('/api/admin/stats');
           if (adData.success) {
@@ -1204,7 +1204,7 @@ export default function App() {
                   />
                 )}
 
-                {activeTab === "admin" && sessionUser?.role === 'admin' && (
+                {activeTab === "admin" && sessionUser?.role === 'admin' && sessionUser?.email?.toLowerCase() === 'arukiranreddy@gmail.com' && (
                   <AdminView 
                     adminStats={adminStats}
                     adminLogs={adminLogs}

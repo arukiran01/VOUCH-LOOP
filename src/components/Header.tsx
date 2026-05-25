@@ -309,13 +309,15 @@ export default function Header({
                         <span className="text-[9.5px] bg-[#f1f5f9] text-[#475569] px-2 py-0.5 rounded-lg font-black tracking-tight border border-slate-200">Dev</span>
                       </button>
 
-                      <button 
-                        onClick={() => { toggleRole(); setProfileOpen(false); }} 
-                        className="w-full text-left px-3 py-2.5 hover:bg-slate-50 text-slate-800 font-bold text-[11.5px] rounded-xl cursor-pointer flex items-center justify-between transition-all"
-                      >
-                        <span>Switch Admin/User Role</span>
-                        <span className="text-[9.5px] bg-[#f1f5f9] text-[#475569] px-2 py-0.5 rounded-lg font-black tracking-tight border border-slate-200">Dev</span>
-                      </button>
+                      {sessionUser?.email?.toLowerCase() === 'arukiranreddy@gmail.com' && (
+                        <button 
+                          onClick={() => { toggleRole(); setProfileOpen(false); }} 
+                          className="w-full text-left px-3 py-2.5 hover:bg-slate-50 text-slate-800 font-bold text-[11.5px] rounded-xl cursor-pointer flex items-center justify-between transition-all"
+                        >
+                          <span>Switch Admin/User Role</span>
+                          <span className="text-[9.5px] bg-[#f1f5f9] text-[#475569] px-2 py-0.5 rounded-lg font-black tracking-tight border border-slate-200">Dev</span>
+                        </button>
+                      )}
 
                       {sessionUser.role === 'admin' && (
                         <button 
