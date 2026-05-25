@@ -62,27 +62,14 @@ export default function AuthView({ mode, setMode, onLoginSuccess, showToast }: A
         showToast(data.message || `Welcome back, ${data.user.name}!`, 'success');
         onLoginSuccess(data.user);
       } else {
-        throw new Error(data.error || 'Invalid email or password.');
+        setLoginError(data.error || 'Invalid email or password.');
+        showToast(data.error || 'Invalid email or password.', 'error');
+        setLoginLoading(false);
+        return;
       }
-    } catch (err) {
-      // Offline fallback: check localStorage or INITIAL_USERS
-      const currentUsersStr = localStorage.getItem('vouchloop_users');
-      let currentUsers = currentUsersStr ? JSON.parse(currentUsersStr) : INITIAL_USERS;
-      if (!currentUsersStr) {
-        localStorage.setItem('vouchloop_users', JSON.stringify(INITIAL_USERS));
-      }
-
-      const matchUser = currentUsers.find((u: any) => u.email.toLowerCase() === emailLogin.trim().toLowerCase());
-      if (matchUser) {
-        // Password logic simulation: accept password123 or whatever they provide
-        const savedUserObj = { ...matchUser, savedPassword: passwordLogin };
-        localStorage.setItem('vouchloop_saved_session', JSON.stringify(savedUserObj));
-        showToast(`Simulated Session: Welcome back, ${matchUser.name}!`, 'success');
-        onLoginSuccess(matchUser);
-      } else {
-        setLoginError('No local user matched with this email. Please check your credentials or create a new account.');
-        showToast('Authentication failed.', 'error');
-      }
+    } catch (err: any) {
+      setLoginError(err.message || 'Server connection error.');
+      showToast(err.message || 'Server connection error.', 'error');
     } finally {
       setLoginLoading(false);
     }
@@ -101,6 +88,14 @@ export default function AuthView({ mode, setMode, onLoginSuccess, showToast }: A
     }
     if (passwordRegister.length < 6) {
       setRegisterError('Password should be at least 6 characters.');
+      return;
+    }
+    const hasLower = /[a-z]/.test(passwordRegister);
+    const hasUpper = /[A-Z]/.test(passwordRegister);
+    const hasDigit = /[0-9]/.test(passwordRegister);
+    const hasSpecial = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(passwordRegister);
+    if (!hasLower || !hasUpper || !hasDigit || !hasSpecial) {
+      setRegisterError('Your password is too weak. It must have at least one lowercase letter, one uppercase letter, one number, and one special character/symbol.');
       return;
     }
 
@@ -133,39 +128,14 @@ export default function AuthView({ mode, setMode, onLoginSuccess, showToast }: A
           onLoginSuccess(data.user);
         }
       } else {
-        throw new Error(data.error || 'Registration failed.');
+        setRegisterError(data.error || 'Registration failed.');
+        showToast(data.error || 'Registration failed.', 'error');
+        setRegisterLoading(false);
+        return;
       }
-    } catch (err) {
-      // Offline fallback signup
-      const currentUsersStr = localStorage.getItem('vouchloop_users');
-      let currentUsers = currentUsersStr ? JSON.parse(currentUsersStr) : [...INITIAL_USERS];
-      
-      const emailExists = currentUsers.some((u: any) => u.email.toLowerCase() === emailRegister.trim().toLowerCase());
-      if (emailExists) {
-        // Automatically check them into their pre-seeded profile instead of blocking them!
-        const matchUser = currentUsers.find((u: any) => u.email.toLowerCase() === emailRegister.trim().toLowerCase());
-        const savedUserObj = { ...matchUser, savedPassword: passwordRegister };
-        localStorage.setItem('vouchloop_saved_session', JSON.stringify(savedUserObj));
-        showToast(`Welcome back, ${matchUser.name}! (Simulated auto-login)`, 'success');
-        onLoginSuccess(matchUser);
-      } else {
-        const newUserObj = {
-          id: `usr-${Date.now()}`,
-          name: nameRegister.trim(),
-          email: emailRegister.trim(),
-          role: 'user',
-          balance: 5000,
-          kycStatus: 'verified' // Pre-verified client logic easily
-        };
-        currentUsers.push(newUserObj);
-        localStorage.setItem('vouchloop_users', JSON.stringify(currentUsers));
-
-        const savedUserObj = { ...newUserObj, savedPassword: passwordRegister };
-        localStorage.setItem('vouchloop_saved_session', JSON.stringify(savedUserObj));
-
-        showToast('Account registered successfully! Received ₹5,000 starting wallet credit inside simulation.', 'success');
-        onLoginSuccess(newUserObj);
-      }
+    } catch (err: any) {
+      setRegisterError(err.message || 'Server connection error.');
+      showToast(err.message || 'Server connection error.', 'error');
     } finally {
       setRegisterLoading(false);
     }
@@ -360,13 +330,16 @@ export default function AuthView({ mode, setMode, onLoginSuccess, showToast }: A
                       type="password"
                       value={passwordRegister}
                       onChange={(e) => setPasswordRegister(e.target.value)}
-                      placeholder="Minimum 6 characters long"
+                      placeholder="e.g. Strong@123"
                       required
                       disabled={registerLoading}
                       className="w-full bg-white border border-zinc-200 text-zinc-805 text-xs pl-9 pr-4 py-2 rounded-xl focus:outline-none focus:border-zinc-500 font-medium transition-colors"
                     />
                     <Lock className="w-3.5 h-3.5 text-zinc-400 absolute left-3.5 top-2.5" />
                   </div>
+                  <p className="text-[9.5px] text-amber-700 leading-normal mt-1.5 font-medium bg-amber-50/70 border border-amber-200/50 p-2 rounded-xl">
+                    ⚠️ <strong>Security Rule:</strong> Must contain at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character (e.g. !, @, #, $, etc).
+                  </p>
                 </div>
 
                 <button
