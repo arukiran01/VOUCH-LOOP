@@ -188,7 +188,7 @@ export default function AuthView({ mode, setMode, onLoginSuccess, showToast }: A
               </div>
 
               {loginError && (
-                <div className="p-3 bg-red-50 border border-red-150 text-red-800 text-[11px] font-semibold rounded-lg flex gap-1.5 items-start">
+                <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-[11px] font-semibold rounded-lg flex gap-1.5 items-start">
                   <span>⚠️</span>
                   <span>{loginError}</span>
                 </div>
@@ -207,7 +207,7 @@ export default function AuthView({ mode, setMode, onLoginSuccess, showToast }: A
                       placeholder="e.g. yourname@gmail.com"
                       required
                       disabled={loginLoading}
-                      className="w-full bg-white border border-zinc-200 text-zinc-805 text-xs pl-9 pr-4 py-2 rounded-xl focus:outline-none focus:border-zinc-500 font-medium transition-colors"
+                      className="w-full bg-white border border-zinc-200 text-zinc-800 text-xs pl-9 pr-4 py-2 rounded-xl focus:outline-none focus:border-zinc-500 font-medium transition-colors"
                     />
                     <Mail className="w-3.5 h-3.5 text-zinc-400 absolute left-3.5 top-2.5" />
                   </div>
@@ -227,7 +227,7 @@ export default function AuthView({ mode, setMode, onLoginSuccess, showToast }: A
                       placeholder="Enter account password"
                       required
                       disabled={loginLoading}
-                      className="w-full bg-white border border-zinc-200 text-zinc-805 text-xs pl-9 pr-4 py-2 rounded-xl focus:outline-none focus:border-zinc-500 font-medium transition-colors"
+                      className="w-full bg-white border border-zinc-200 text-zinc-800 text-xs pl-9 pr-4 py-2 rounded-xl focus:outline-none focus:border-zinc-500 font-medium transition-colors"
                     />
                     <Lock className="w-3.5 h-3.5 text-zinc-400 absolute left-3.5 top-2.5" />
                   </div>
@@ -271,14 +271,14 @@ export default function AuthView({ mode, setMode, onLoginSuccess, showToast }: A
               </div>
 
               {registerError && (
-                <div className="p-3 bg-red-50 border border-red-150 text-red-800 text-[11px] font-semibold rounded-lg flex gap-1.5 items-start">
+                <div className="p-3 bg-red-50 border border-red-200 text-red-800 text-[11px] font-semibold rounded-lg flex gap-1.5 items-start">
                   <span>⚠️</span>
                   <span>{registerError}</span>
                 </div>
               )}
 
               {registerSuccess && (
-                <div className="p-3 bg-emerald-50 border border-emerald-150 text-emerald-800 text-[11px] font-semibold rounded-lg flex gap-2 items-start">
+                <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-semibold rounded-lg flex gap-2 items-start">
                   <CheckCircle className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
                   <span>{registerSuccess}</span>
                 </div>

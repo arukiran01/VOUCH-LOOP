@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Upload, 
   HelpCircle, 
-  Sparkles, 
+  Calculator, 
   CheckCircle, 
   AlertCircle,
   FileText
@@ -35,6 +35,56 @@ interface SellGiftCardViewProps {
   showToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
+const renderBrandLogo = (brandName: string) => {
+  const normalized = brandName ? brandName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
+  
+  if (normalized.includes('amazon')) {
+    return (
+      <div className="w-8 h-8 rounded-lg bg-[#111] border border-zinc-805 flex flex-col items-center justify-center select-none flex-shrink-0 shadow-sm relative overflow-hidden">
+        <span className="text-[7.5px] text-white tracking-tight font-sans leading-none font-black lowercase">amazon</span>
+        <svg className="w-4 h-1 text-[#FF9900] mt-0.5" viewBox="0 0 24 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M2 1.5C5 5.5 19 5.5 22 1.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+          <path d="M21 0.8L23 2.5L20 4.2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </div>
+    );
+  }
+  
+  if (normalized.includes('swiggy')) {
+    return (
+      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[#FF9F33] to-[#FF5600] border border-orange-400/25 flex items-center justify-center select-none flex-shrink-0 shadow-sm relative overflow-hidden animate-none">
+        <svg className="w-3 h-4.5 text-white" viewBox="0 0 16 24" fill="currentColor">
+          <path d="M4 20C4 20 1 18 1 15C1 12 5 11 5 8C5 5 1 4 1 2C1 0 4 0 7 2C10 4 14 6 14 9C14 12 11 14 11 17C11 20 14 21 14 23C11 23 8 22 4 20Z" fillRule="evenodd" />
+        </svg>
+      </div>
+    );
+  }
+
+  if (normalized.includes('myntra')) {
+    return (
+      <div className="w-8 h-8 rounded-lg bg-white border border-rose-100 flex items-center justify-center font-black select-none flex-shrink-0 shadow-xs relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-tr from-[#FF3366] via-[#FF8833] to-[#AA33FF] opacity-10" />
+        <span className="text-[11px] font-black tracking-tight font-sans bg-clip-text text-transparent bg-gradient-to-tr from-[#E61C5D] via-[#FF5F1F] to-[#8F00FF] scale-y-115">M</span>
+      </div>
+    );
+  }
+
+  if (normalized.includes('bookmyshow') || normalized.includes('bms')) {
+    return (
+      <div className="w-8 h-8 rounded-lg bg-[#df1827] border border-red-540/25 flex flex-col items-center justify-center text-white select-none flex-shrink-0 shadow-sm">
+        <span className="text-[6px] uppercase font-mono font-black tracking-tight leading-none text-red-100">BOOK</span>
+        <span className="text-[6px] uppercase font-black tracking-widest leading-none mt-0.5 text-zinc-100">SHOW</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-600 to-indigo-800 text-white flex items-center justify-center font-black text-xs select-none flex-shrink-0 shadow-xs">
+      {brandName.charAt(0).toUpperCase()}
+    </div>
+  );
+};
+
 export default function SellGiftCardView({
   sessionUser,
   uploadForm,
@@ -61,7 +111,7 @@ export default function SellGiftCardView({
     <div className="py-8 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto space-y-8 font-sans">
       
       {/* Page description */}
-      <div className="flex flex-col border-b border-zinc-150/60 pb-5">
+      <div className="flex flex-col border-b border-zinc-200 pb-5">
         <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Sellers Hub</span>
         <h1 className="text-2xl font-black text-slate-900 tracking-tight">Post Your Unused Gift Cards</h1>
         <p className="text-xs text-slate-500 mt-1">
@@ -85,7 +135,7 @@ export default function SellGiftCardView({
         
         {/* Left Column: Form Inputs */}
         <div className="md:col-span-2 bg-white p-6 sm:p-8 rounded-3xl border border-zinc-200/60 space-y-6 text-left">
-          <h2 className="text-xs font-bold uppercase text-slate-450 tracking-wider">Listing Specifications</h2>
+          <h2 className="text-xs font-bold uppercase text-slate-400 tracking-wider">Listing Specifications</h2>
 
           <form onSubmit={onSubmitListing} className="space-y-4">
             
@@ -244,10 +294,10 @@ export default function SellGiftCardView({
                 type="button"
                 onClick={onPriceCalculator}
                 disabled={priceCalculating}
-                className="bg-indigo-50 border border-indigo-150 hover:bg-indigo-100 text-indigo-700 text-xs px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer flex-shrink-0 disabled:opacity-50"
+                className="bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-indigo-700 text-xs px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-1.5 cursor-pointer flex-shrink-0 disabled:opacity-50"
               >
-                <Sparkles className="w-4 h-4 text-emerald-600" />
-                <span>Estimate Optimal Index</span>
+                <Calculator className="w-4 h-4 text-indigo-600" />
+                <span>Calculate Rate</span>
               </button>
             </div>
 
@@ -268,7 +318,7 @@ export default function SellGiftCardView({
         {/* Right Column: OCR Receipt parsing simulator */}
         <div className="bg-zinc-50 p-6 rounded-3xl border border-zinc-200/60 flex flex-col justify-between text-left h-fit min-h-[380px] space-y-6">
           <div className="space-y-4">
-            <h3 className="text-xs font-bold uppercase text-slate-450 tracking-wider">Fast Receipt Parser</h3>
+            <h3 className="text-xs font-bold uppercase text-slate-400 tracking-wider">Fast Receipt Parser</h3>
             <p className="text-xs text-slate-500 leading-relaxed font-normal">
               Click any coupon template voucher below to simulate our automatic receipt parser scanning the digital invoice and auto-filling the specifications.
             </p>
@@ -280,10 +330,13 @@ export default function SellGiftCardView({
                   type="button"
                   onClick={() => onBarcodeMockDrop(brand)}
                   disabled={ocrScanning}
-                  className="bg-white border border-zinc-200/80 hover:border-indigo-400 hover:shadow-xs p-3 rounded-xl text-left transition-all cursor-pointer disabled:opacity-50 flex flex-col justify-between h-20"
+                  className="bg-white border border-zinc-200/80 hover:border-indigo-500 hover:shadow-xs p-3 rounded-2xl text-left transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2.5 h-18 text-slate-800"
                 >
-                  <span className="text-[10px] font-bold text-indigo-650 block uppercase tracking-wide">{brand}</span>
-                  <span className="text-[11px] text-slate-700 font-extrabold">Parse slip 📄</span>
+                  {renderBrandLogo(brand)}
+                  <div className="flex flex-col justify-center min-w-0">
+                    <span className="text-[11px] font-bold text-slate-800 tracking-wide block leading-none truncate">{brand}</span>
+                    <span className="text-[9px] text-zinc-400 mt-1 block leading-none">Parse slip 📄</span>
+                  </div>
                 </button>
               ))}
             </div>
@@ -315,7 +368,7 @@ export default function SellGiftCardView({
           ) : (
             <div className="border border-zinc-200/60 border-dashed rounded-2xl p-6 text-center space-y-2.5 bg-white shadow-inner flex flex-col justify-center items-center py-8">
               <Upload className="w-8 h-8 text-zinc-300" />
-              <h4 className="text-xs font-bold text-slate-750">Parsing Simulator Ready</h4>
+              <h4 className="text-xs font-bold text-slate-700">Parsing Simulator Ready</h4>
               <p className="text-[10px] text-slate-400 leading-normal max-w-[140px] mx-auto">Click any recipe template slot above to parser metadata.</p>
             </div>
           )}

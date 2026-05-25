@@ -139,7 +139,7 @@ export default function Header({
           {/* Logo */}
           <div 
             onClick={handleLogoClick}
-            className="flex items-center gap-2.5 cursor-pointer flex-shrink-0 relative group"
+            className="flex items-center gap-2.5 cursor-pointer flex-shrink-0 relative"
             id="brand-logo"
           >
             <div className="p-2 bg-zinc-950 text-white rounded-xl flex items-center justify-center">
@@ -148,15 +148,6 @@ export default function Header({
             <span className="text-base font-black tracking-tight text-slate-900">
               VouchLoop
             </span>
-            
-            {/* Tooltip */}
-            <div className="absolute left-0 top-full mt-2 hidden group-hover:flex flex-col bg-zinc-950 border border-zinc-800 px-3 py-2 rounded-xl text-[10.5px] text-zinc-100 font-sans font-bold shadow-xl z-[100] whitespace-nowrap gap-0.5 pointer-events-none animate-in fade-in slide-in-from-top-1 duration-150">
-              <span className="text-[11.5px] text-indigo-450 text-indigo-400">VouchLoop Inc.</span>
-              <span className="flex items-center gap-1.5 text-zinc-400">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                P2P Protocol: <span className="text-emerald-400">Operational</span>
-              </span>
-            </div>
           </div>
 
           {/* Search bar inside header desktop */}
@@ -251,7 +242,7 @@ export default function Header({
                 {/* Cart Badge Button */}
                 <button
                   onClick={() => setActiveTab('wallet')}
-                  className="relative p-2 text-slate-600 hover:text-indigo-650 transition-colors cursor-pointer mr-0.5"
+                  className="relative p-2 text-slate-600 hover:text-indigo-600 transition-colors cursor-pointer mr-0.5"
                   title="Your purchased vouchers history"
                 >
                   <ShoppingCart className="w-[18px] h-[18px]" />
@@ -263,7 +254,7 @@ export default function Header({
                 <div className="relative">
                   <button 
                     onClick={() => setProfileOpen(!profileOpen)}
-                    className="flex items-center gap-2 p-1 bg-zinc-50 hover:bg-zinc-150/60 rounded-xl border border-zinc-200/60 transition-colors cursor-pointer"
+                    className="flex items-center gap-2 p-1 bg-zinc-50 hover:bg-zinc-100 rounded-xl border border-zinc-200/60 transition-colors cursor-pointer"
                   >
                     <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white font-black flex items-center justify-center text-[10px] select-none uppercase shadow-xs">
                       {sessionUser.name ? sessionUser.name.charAt(0) : 'U'}
@@ -305,8 +296,8 @@ export default function Header({
                         onClick={() => { toggleKyc(); setProfileOpen(false); }} 
                         className="w-full text-left px-3 py-2.5 hover:bg-slate-50 text-slate-800 font-bold text-[11.5px] rounded-xl cursor-pointer flex items-center justify-between transition-all"
                       >
-                        <span>Simulate KYC Verify</span>
-                        <span className="text-[9.5px] bg-[#f1f5f9] text-[#475569] px-2 py-0.5 rounded-lg font-black tracking-tight border border-slate-200">Dev</span>
+                        <span>Update KYC Verification</span>
+                        <span className="text-[9.5px] bg-[#f1f5f9] text-[#475569] px-2 py-0.5 rounded-lg font-black tracking-tight border border-slate-200">KYC</span>
                       </button>
 
                       {sessionUser?.email?.toLowerCase() === 'arukiranreddy@gmail.com' && (
@@ -331,11 +322,10 @@ export default function Header({
 
                       <button 
                         onClick={() => { onLogout(); setProfileOpen(false); }} 
-                        className="w-full text-left px-3 py-2.5 hover:bg-rose-55 hover:bg-rose-50 text-rose-600 font-extrabold text-[11.5px] rounded-xl cursor-pointer flex items-center justify-between border-t border-slate-100/80 mt-2.5 pt-2 transition-all"
+                        className="w-full text-left px-3 py-2.5 hover:bg-rose-50 text-rose-600 font-bold text-[11.5px] rounded-xl cursor-pointer flex items-center justify-between border-t border-slate-100 mt-2.5 pt-2 transition-colors duration-150"
                         id="logout-btn"
                       >
-                        <span>Sign Out Token</span>
-                        <span className="text-[9.5px] bg-rose-50 text-rose-600 px-2 py-0.5 rounded-lg font-black border border-rose-100">Switch</span>
+                        <span>Sign Out</span>
                       </button>
                     </div>
                   </div>
@@ -375,12 +365,12 @@ export default function Header({
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-[200] p-4 select-none">
           <div className="bg-white rounded-3xl border border-zinc-200 shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col justify-between">
             {/* Visual Header line */}
-            <div className="h-1.5 w-full bg-gradient-to-r from-indigo-505 via-[#ff116d] to-amber-500" />
+            <div className="h-1.5 w-full bg-gradient-to-r from-indigo-500 via-[#ff116d] to-amber-500" />
             
             <form onSubmit={handleSaveProfile} className="p-6 space-y-5 text-left font-sans">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="p-1.5 bg-indigo-550 bg-indigo-50 text-indigo-750 text-indigo-700 rounded-lg">
+                  <div className="p-1.5 bg-indigo-50 text-indigo-700 rounded-lg">
                     <UserIcon className="w-4 h-4" />
                   </div>
                   <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">
@@ -390,21 +380,21 @@ export default function Header({
                 <button 
                   type="button"
                   onClick={() => setIsEditingProfile(false)}
-                  className="p-1.5 text-slate-400 hover:text-slate-705 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer"
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-zinc-100 rounded-xl transition-all cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
               <p className="text-[10.5px] text-slate-500 leading-normal">
-                Revise your credentials, update your peer ledger identity avatar, or simulate standard regulatory KYC check status securely.
+                Revise your credentials, update your identity avatar, or configure standard regulatory KYC check status securely.
               </p>
 
               {feedback && (
                 <div className={`p-3 rounded-2xl text-[10.5px] font-bold leading-normal duration-150 border ${
                   feedback.type === 'success' 
-                    ? 'bg-emerald-550/10 bg-emerald-50 text-emerald-800 border-emerald-150' 
-                    : 'bg-rose-50 text-rose-800 border-rose-150'
+                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+                    : 'bg-rose-50 text-rose-800 border-rose-200'
                 }`}>
                   {feedback.type === 'success' ? '✓ ' : '⚠️ '}
                   {feedback.msg}
@@ -414,7 +404,7 @@ export default function Header({
               <div className="space-y-4">
                 {/* Full name input */}
                 <div className="space-y-1">
-                  <label className="text-[8.5px] font-black uppercase tracking-wider text-slate-450 block">Full Name</label>
+                  <label className="text-[8.5px] font-black uppercase tracking-wider text-slate-400 block">Full Name</label>
                   <input
                     type="text"
                     required
@@ -427,7 +417,7 @@ export default function Header({
 
                 {/* Email address input */}
                 <div className="space-y-1">
-                  <label className="text-[8.5px] font-black uppercase tracking-wider text-slate-450 block">Email Address</label>
+                  <label className="text-[8.5px] font-black uppercase tracking-wider text-slate-400 block">Email Address</label>
                   <input
                     type="email"
                     required
@@ -440,10 +430,10 @@ export default function Header({
 
 
 
-                {/* KYC Level Simulation */}
-                <div className="bg-slate-50 border border-slate-150 rounded-2xl p-3 flex items-center justify-between text-xs">
+                {/* KYC Level Status */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 flex items-center justify-between text-xs">
                   <div className="space-y-0.5 pr-2">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-450 block">Simulate KYC Seal</span>
+                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">KYC Verification Status</span>
                     <span className="text-[10px] font-semibold text-slate-500 leading-normal block">Unlock immediate listings & claims powers</span>
                   </div>
                   <select

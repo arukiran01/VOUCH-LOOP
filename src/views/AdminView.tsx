@@ -95,7 +95,7 @@ export default function AdminView({
               <span className="text-2xl font-black text-rose-600">
                 {adminStats.pendingApprovalCount + adminStats.pendingWithdrawalCount} Items
               </span>
-              <span className="text-xs font-bold text-rose-500 animate-pulse">Needs Clearing</span>
+              <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full uppercase tracking-wide">Needs Action</span>
             </div>
           </div>
 
@@ -263,7 +263,7 @@ export default function AdminView({
                         <td className="py-3 px-4 text-right font-mono font-bold text-slate-800">
                           ₹{(user.balance || 0).toLocaleString('en-IN')}.00
                         </td>
-                        <td className="py-3 px-4 text-right font-mono font-black text-indigo-650">
+                        <td className="py-3 px-4 text-right font-mono font-black text-indigo-600">
                           ₹{(user.totalTransactionVolume || 0).toLocaleString('en-IN')}.00
                         </td>
                       </tr>
@@ -379,7 +379,7 @@ CREATE TABLE users (
 
               <div className="bg-indigo-50/50 p-3.5 rounded-2xl tracking-tight border border-indigo-100/30 text-center">
                 <span className="text-[9px] uppercase font-bold text-indigo-500 tracking-wider block">Total Tx Volume</span>
-                <span className="text-lg font-mono font-black text-indigo-750 mt-1 block">
+                <span className="text-lg font-mono font-black text-indigo-700 mt-1 block">
                   ₹{(selectedUser.totalTransactionVolume || 0).toLocaleString('en-IN')}.00
                 </span>
               </div>

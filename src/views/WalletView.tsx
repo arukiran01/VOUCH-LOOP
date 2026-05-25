@@ -26,74 +26,92 @@ const renderBrandLogo = (brandName: string) => {
   
   if (normalized.includes('amazon')) {
     return (
-      <div className="w-10 h-10 rounded-xl bg-zinc-950 border border-amber-500/30 flex flex-col items-center justify-center font-black select-none flex-shrink-0 relative overflow-hidden">
-        <span className="text-[10px] text-white tracking-tighter leading-none font-sans">amazon</span>
-        <span className="text-[11px] text-[#FF9900] leading-none -mt-0.5 font-bold">↵</span>
+      <div className="w-10 h-10 rounded-xl bg-[#111] border border-zinc-800 flex flex-col items-center justify-center select-none flex-shrink-0 shadow-sm relative overflow-hidden">
+        {/* Amazon logo styling */}
+        <span className="text-[10px] text-white tracking-tight font-sans leading-none font-black lowercase">amazon</span>
+        <svg className="w-5.5 h-1.5 text-[#FF9900] mt-0.5" viewBox="0 0 24 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M2 1.5C5 5.5 19 5.5 22 1.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+          <path d="M21 0.8L23 2.5L20 4.2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
       </div>
     );
   }
   
   if (normalized.includes('flipkart')) {
     return (
-      <div className="w-10 h-10 rounded-xl bg-[#2874f0] border border-blue-400/20 flex flex-col items-center justify-center font-extrabold text-white select-none flex-shrink-0 relative">
-        <span className="text-[9px] tracking-tight leading-none uppercase">Flipkart</span>
-        <span className="text-[8px] text-yellow-300 font-black leading-none mt-0.5">★</span>
+      <div className="w-10 h-10 rounded-xl bg-[#2874f0] border border-blue-400/20 flex flex-col items-center justify-center font-extrabold text-white select-none flex-shrink-0 relative overflow-hidden shadow-sm">
+        <div className="flex items-center gap-0.5 leading-none">
+          <span className="text-[10px] text-white tracking-tighter lowercase italic font-black font-sans">flip</span>
+          <span className="text-[10px] text-[#ffe500] tracking-tighter lowercase italic font-black font-sans">kart</span>
+        </div>
+        <div className="mt-1 w-4 h-3 bg-[#ffe500] rounded-xs relative flex items-center justify-center">
+          <span className="text-[6px] text-[#2874f0] font-black leading-none">★</span>
+        </div>
       </div>
     );
   }
   
   if (normalized.includes('ajio')) {
     return (
-      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1b1c1e] to-[#402026] border border-rose-900/30 flex items-center justify-center font-black text-rose-100 select-none flex-shrink-0">
-        <span className="text-xs uppercase tracking-widest font-serif scale-y-110">AJIO</span>
+      <div className="w-10 h-10 rounded-xl bg-[#0e1012] border border-zinc-800 flex items-center justify-center select-none flex-shrink-0 shadow-sm">
+        <span className="text-[10px] text-white font-extrabold uppercase tracking-widest scale-y-110 font-mono">AJIO</span>
       </div>
     );
   }
   
   if (normalized.includes('swiggy')) {
     return (
-      <div className="w-10 h-10 rounded-xl bg-orange-500 border border-orange-400/20 flex items-center justify-center font-black text-white select-none flex-shrink-0">
-        <span className="text-sm tracking-tighter italic font-serif">S</span>
+      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#FF9F33] to-[#FF5600] border border-orange-400/20 flex items-center justify-center select-none flex-shrink-0 shadow-sm relative overflow-hidden">
+        <svg className="w-4 h-6 text-white" viewBox="0 0 16 24" fill="currentColor">
+          <path d="M4 20C4 20 1 18 1 15C1 12 5 11 5 8C5 5 1 4 1 2C1 0 4 0 7 2C10 4 14 6 14 9C14 12 11 14 11 17C11 20 14 21 14 23C11 23 8 22 4 20Z" fillRule="evenodd" />
+        </svg>
       </div>
     );
   }
   
   if (normalized.includes('zomato')) {
     return (
-      <div className="w-10 h-10 rounded-xl bg-[#e23744] border border-red-500/20 flex items-center justify-center font-black text-white select-none flex-shrink-0">
-        <span className="text-xs tracking-tighter lowercase font-bold">zomato</span>
+      <div className="w-10 h-10 rounded-xl bg-[#cb202d] border border-red-500/20 flex flex-col items-center justify-center select-none flex-shrink-0 shadow-sm">
+        <span className="text-[11px] text-white tracking-tighter lowercase font-black font-sans leading-none">zomato</span>
+        <svg className="w-2.5 h-2.5 text-white mt-1 fill-current" viewBox="0 0 24 24">
+          <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+        </svg>
       </div>
     );
   }
   
   if (normalized.includes('myntra')) {
     return (
-      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-500 via-purple-500 to-amber-400 border border-pink-400/20 flex items-center justify-center font-black text-white select-none flex-shrink-0 shadow-xs">
-        <span className="text-sm tracking-tighter font-serif">M</span>
+      <div className="w-10 h-10 rounded-xl bg-white border border-rose-100 flex items-center justify-center font-black select-none flex-shrink-0 shadow-xs relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-tr from-[#FF3366] via-[#FF8833] to-[#AA33FF] opacity-10" />
+        <span className="text-sm font-black tracking-tight font-sans bg-clip-text text-transparent bg-gradient-to-tr from-[#E61C5D] via-[#FF5F1F] to-[#8F00FF] scale-y-115">M</span>
       </div>
     );
   }
   
   if (normalized.includes('bookmyshow') || normalized.includes('bms')) {
     return (
-      <div className="w-10 h-10 rounded-xl bg-[#EC1C24] border border-red-600/25 flex flex-col items-center justify-center font-extrabold text-white select-none flex-shrink-0">
-        <span className="text-[8px] uppercase tracking-tighter leading-none">BMyS</span>
-        <span className="text-[8px] leading-none mt-0.5">🎟️</span>
+      <div className="w-10 h-10 rounded-xl bg-[#df1827] border border-red-550/25 flex flex-col items-center justify-center text-white select-none flex-shrink-0 shadow-sm">
+        <span className="text-[7.5px] uppercase font-mono font-black tracking-tight leading-none text-red-100">BOOKMY</span>
+        <span className="text-[8px] uppercase font-black tracking-widest leading-none mt-0.5 text-zinc-100">SHOW</span>
       </div>
     );
   }
 
   if (normalized.includes('puma')) {
     return (
-      <div className="w-10 h-10 rounded-xl bg-black border border-zinc-800 flex items-center justify-center font-extrabold text-white select-none flex-shrink-0">
-        <span className="text-[8px] tracking-widest uppercase font-mono">PUMA</span>
+      <div className="w-10 h-10 rounded-xl bg-black border border-zinc-900 flex flex-col items-center justify-center text-white select-none flex-shrink-0 shadow-sm">
+        <svg className="w-4 h-4 text-white -mb-0.5" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M19 5.5l1.5-1.5L22 5.5H19z M4 11.5L5.5 10l5.5 5.5L4 11.5z M18 13.5l-3-3l-7.5 7.5l3.5 3.5L18 13.5z" />
+        </svg>
+        <span className="text-[7px] tracking-widest uppercase font-black text-white font-mono leading-none mt-1">PUMA</span>
       </div>
     );
   }
 
   if (normalized.includes('lakme')) {
     return (
-      <div className="w-10 h-10 rounded-xl bg-amber-950 border border-amber-800/40 flex items-center justify-center font-serif text-[9px] tracking-widest font-bold text-amber-200 uppercase select-none flex-shrink-0">
+      <div className="w-10 h-10 rounded-xl bg-[#141210] border border-amber-900/35 flex items-center justify-center font-serif text-[8.5px] tracking-widest font-black text-[#D4AF37] uppercase select-none flex-shrink-0 shadow-sm leading-none">
         LAKMÉ
       </div>
     );
@@ -101,18 +119,30 @@ const renderBrandLogo = (brandName: string) => {
 
   if (normalized.includes('fastrack')) {
     return (
-      <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-700 flex flex-col items-center justify-center font-black select-none flex-shrink-0">
-        <span className="text-[8px] tracking-tighter uppercase leading-none text-yellow-500">FAST</span>
-        <span className="text-[8px] tracking-widest uppercase leading-none text-white font-black">RCK</span>
+      <div className="w-10 h-10 rounded-xl bg-[#1a1c1d] border border-zinc-800 flex flex-col items-center justify-center text-yellow-500 select-none flex-shrink-0 shadow-sm">
+        <span className="text-[9.5px] tracking-tighter uppercase leading-none font-black text-[#CEEF00]">FAST</span>
+        <span className="text-[8.5px] tracking-widest uppercase leading-none text-white font-extrabold -mt-0.5">RCK</span>
       </div>
     );
   }
 
   if (normalized.includes('yatra')) {
     return (
-      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 to-red-500 border border-red-400/20 flex flex-col items-center justify-center font-black text-white select-none flex-shrink-0 relative">
-        <span className="text-[10px] tracking-tighter uppercase leading-none italic font-serif">yatra</span>
-        <span className="text-[9px] leading-none mt-0.5">✈️</span>
+      <div className="w-10 h-10 rounded-xl bg-[#ec3832] border border-red-500/25 flex flex-col items-center justify-center text-white select-none flex-shrink-0 shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-4 h-4 rounded-full bg-white/10 translate-x-1.5 -translate-y-1.5" />
+        <span className="text-[9.5px] tracking-tight uppercase leading-none italic font-serif font-black">yatra</span>
+        <span className="text-[8px] mt-0.5 leading-none opacity-90">✈️</span>
+      </div>
+    );
+  }
+
+  if (normalized.includes('sbi')) {
+    return (
+      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00a3e0] to-[#005a9c] border border-cyan-400/20 flex flex-col items-center justify-center text-white select-none flex-shrink-0 relative shadow-sm">
+        <span className="text-[10px] tracking-tighter uppercase font-mono font-black leading-none italic">SBI</span>
+        <div className="w-2.5 h-2.5 rounded-full border border-white mt-1 relative flex items-center justify-center">
+          <div className="w-1 h-1 bg-white rounded-full" />
+        </div>
       </div>
     );
   }

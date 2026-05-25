@@ -736,7 +736,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.json({
         success: true,
         user,
-        message: `Welcome back, ${user.name}! Authenticated securely via Supabase Auth.`
+        message: `Welcome back to VouchLoop, ${user.name}!`
       });
     } catch (err: any) {
       console.error('Supabase authentication login exception:', err.message);
@@ -775,7 +775,7 @@ app.post('/api/auth/login', async (req, res) => {
     success: true,
     user,
     isNewUser,
-    message: `[Peer mode] Welcome back, ${user.name}! Your workspace wallet contains ₹${user.balance} INR.`
+    message: `Welcome back to VouchLoop, ${user.name}!`
   });
 });
 
@@ -1623,6 +1623,23 @@ app.get('/api/ai/recommendations', (req, res) => {
   const activeCoupons = db.coupons.filter((c: any) => c.status === 'active');
   const list = activeCoupons.slice(0, 3);
   res.json({ success: true, recommendations: list });
+});
+
+// Fallback 404 handler for unmatched API endpoints to prevent returning SPA index.html
+app.all('/api/*', (req, res) => {
+  res.status(404).json({
+    success: false,
+    error: `API end point ${req.method} ${req.originalUrl} not found on this server.`
+  });
+});
+
+// Global central error handler to prevent returning HTML stack traces
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error('Express App Error Handler:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'An internal ledger server error occurred.'
+  });
 });
 
 // Vite middleware setup
