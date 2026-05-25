@@ -696,8 +696,14 @@ app.post('/api/auth/login', async (req, res) => {
       }), 4000);
       
       if (error) {
-        console.warn('Supabase auth login mismatch, checking local database simulation...', error.message);
-        throw new Error(error.message);
+        console.warn('Supabase login validation failed:', error.message);
+        if (error.message.toLowerCase().includes('confirm') || error.message.toLowerCase().includes('verified') || error.message.toLowerCase().includes('verification')) {
+          return res.status(400).json({ 
+            success: false, 
+            error: 'Email verification required. Please check your inbox or spam to confirm your email before logging in.' 
+          });
+        }
+        return res.status(400).json({ success: false, error: 'Invalid login credentials. Please check your email and password.' });
       }
       
       let user = db.users.find((u: any) => u.email.toLowerCase() === trimmedEmail);
@@ -718,6 +724,9 @@ app.post('/api/auth/login', async (req, res) => {
           avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(rawName)}`
         };
         db.users.push(user);
+      } else if (data.user?.id && user.id.startsWith('usr-')) {
+        // Upgrade simulated ID to real Supabase UUID
+        user.id = data.user.id;
       }
       
       db.activeUserId = user.id;
@@ -730,7 +739,8 @@ app.post('/api/auth/login', async (req, res) => {
         message: `Welcome back, ${user.name}! Authenticated securely via Supabase Auth.`
       });
     } catch (err: any) {
-      console.warn('Supabase auth login handshaking error, executing peer simulation fallback:', err.message);
+      console.error('Supabase authentication login exception:', err.message);
+      return res.status(400).json({ success: false, error: err.message || 'Supabase login service unavailable' });
     }
   }
 
@@ -823,17 +833,10 @@ app.post('/api/auth/signup', async (req, res) => {
                 message: `Account already exists. Logged in successfully as ${user.name}!`
               });
             } else {
-              // Try local login fallback anyway to avoid blocking
-              let user = db.users.find((u: any) => u.email.toLowerCase() === trimmedEmail);
-              if (user) {
-                db.activeUserId = user.id;
-                writeDB(db);
-                return res.json({
-                  success: true,
-                  user,
-                  isNewUser: false,
-                  verificationRequired: false,
-                  message: `Welcome back via local wallet profile fallback, ${user.name}!`
+              if (logError && (logError.message.toLowerCase().includes('confirm') || logError.message.toLowerCase().includes('verified') || logError.message.toLowerCase().includes('verification'))) {
+                return res.status(400).json({ 
+                  success: false, 
+                  error: 'This account email is already registered but is pending email verification. Please check your inbox or spam to confirm.' 
                 });
               }
               return res.status(400).json({ 
@@ -842,19 +845,31 @@ app.post('/api/auth/signup', async (req, res) => {
               });
             }
           } catch (loginErr) {
-            throw new Error('Supabase Auth unreachability fallback');
+            return res.status(400).json({ success: false, error: 'User is already registered but password matching or connection failed.' });
           }
         } else {
-          console.warn('Supabase signup returned error, falling back to local simulation:', error.message);
-          throw new Error(error.message);
+          console.warn('Supabase signup returned error:', error.message);
+          return res.status(400).json({ success: false, error: error.message });
         }
       }
       
+      const isConfirmNeeded = data.session === null;
+      
       let user = db.users.find((u: any) => u.email.toLowerCase() === trimmedEmail);
       if (user) {
-        db.activeUserId = user.id;
-        writeDB(db);
-        return res.json({ success: true, user, isNewUser: false, verificationRequired: false });
+        if (isConfirmNeeded) {
+          return res.json({ 
+            success: true, 
+            user: null, 
+            isNewUser: false, 
+            verificationRequired: true,
+            message: 'Verification email sent! Please check your inbox/spam folder to verify your account.'
+          });
+        } else {
+          db.activeUserId = user.id;
+          writeDB(db);
+          return res.json({ success: true, user, isNewUser: false, verificationRequired: false });
+        }
       }
       
       const emailPrefix = trimmedEmail.split('@')[0];
@@ -874,19 +889,32 @@ app.post('/api/auth/signup', async (req, res) => {
       };
       
       db.users.push(newUser);
-      db.activeUserId = newUser.id;
-      writeDB(db);
-      logEvent('info', `Created new Supabase auth user account: ${newUser.name}`, 'Auth', newUser.name);
       
-      return res.json({ 
-        success: true, 
-        user: newUser, 
-        isNewUser: true,
-        verificationRequired: false,
-        message: `Registered successfully! Welcome to VouchLoop.`
-      });
+      if (isConfirmNeeded) {
+        writeDB(db);
+        logEvent('info', `Created new unverified Supabase account for ${newUser.name}. Pending email check.`, 'Auth', newUser.name);
+        return res.json({ 
+          success: true, 
+          user: null, 
+          isNewUser: true,
+          verificationRequired: true,
+          message: 'Verification email sent! Please check your inbox / spam folder to verify.'
+        });
+      } else {
+        db.activeUserId = newUser.id;
+        writeDB(db);
+        logEvent('info', `Created new Supabase auth user account: ${newUser.name}`, 'Auth', newUser.name);
+        return res.json({ 
+          success: true, 
+          user: newUser, 
+          isNewUser: true,
+          verificationRequired: false,
+          message: `Registered successfully! Welcome to VouchLoop.`
+        });
+      }
     } catch (err: any) {
-      console.warn('Supabase authentication signup loading exception, falling back to local simulation:', err.message);
+      console.error('Supabase authentication signup loading exception:', err.message);
+      return res.status(400).json({ success: false, error: err.message || 'Supabase signup service exception' });
     }
   }
 

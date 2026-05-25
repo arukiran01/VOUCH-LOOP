@@ -121,12 +121,17 @@ export default function AuthView({ mode, setMode, onLoginSuccess, showToast }: A
       const data = await res.json();
       
       if (res.ok && data.success) {
-        // Save to local storage for automatic login
-        const savedUserObj = { ...data.user, savedPassword: passwordRegister };
-        localStorage.setItem('vouchloop_saved_session', JSON.stringify(savedUserObj));
-        
-        showToast(data.message || 'Account created successfully! Received ₹5,000 starting wallet credit.', 'success');
-        onLoginSuccess(data.user);
+        if (data.verificationRequired) {
+          setRegisterSuccess(data.message || 'Verification email sent! Please check your inbox / spam folder to verify your account.');
+          showToast('Verification email sent.', 'info');
+        } else {
+          // Save to local storage for automatic login
+          const savedUserObj = { ...data.user, savedPassword: passwordRegister };
+          localStorage.setItem('vouchloop_saved_session', JSON.stringify(savedUserObj));
+          
+          showToast(data.message || 'Account created successfully! Received ₹5,000 starting wallet credit.', 'success');
+          onLoginSuccess(data.user);
+        }
       } else {
         throw new Error(data.error || 'Registration failed.');
       }
