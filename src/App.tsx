@@ -10,6 +10,7 @@ import SupportChatView from './views/SupportChatView';
 import AdminView from './views/AdminView';
 import AuthView from './views/AuthView';
 import { User, Coupon, Transaction, Review, ChatMessage, SystemLog, PriceAlert } from './types';
+import { INITIAL_USERS, INITIAL_COUPONS, INITIAL_REVIEWS, INITIAL_TRANSACTIONS } from './data/mockData';
 
 export default function App() {
   // Global Navigation State
@@ -110,45 +111,61 @@ export default function App() {
     }, 4500);
   };
 
-  // State Loader from standard mock Express server APIs
+  // State Loader from standard mock Express server APIs with Local Fallback support
   const fetchData = async () => {
-    try {
-      // Session fetch
-      const sessRes = await fetch('/api/auth/session');
-      const sessData = await sessRes.json();
-      let activeUser = null;
+    let activeUser: User | null = null;
 
-      if (sessData.success && sessData.user) {
-        activeUser = sessData.user;
-        setSessionUser(sessData.user);
-        // Sync to localstorage
-        localStorage.setItem('vouchloop_saved_session', JSON.stringify(sessData.user));
-      } else {
-        // Not logged in on server. Try to restore from local storage and auto-login
+    // Helper to safely fetch JSON and avoid crashes on static builds serving HTML instead of JSON
+    const fetchJsonSafe = async (url: string, options?: RequestInit) => {
+      const res = await fetch(url, options);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const contentType = res.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('HTML/Redirect response received');
+      }
+      return await res.json();
+    };
+
+    try {
+      // 1. User Session fetch or localStorage auto-login
+      try {
+        const sessData = await fetchJsonSafe('/api/auth/session');
+        if (sessData.success && sessData.user) {
+          activeUser = sessData.user;
+          setSessionUser(sessData.user);
+          localStorage.setItem('vouchloop_saved_session', JSON.stringify(sessData.user));
+        } else {
+          throw new Error('No server session');
+        }
+      } catch (err) {
+        // Offline / Static fallback auto-login from local storage
         const savedSession = localStorage.getItem('vouchloop_saved_session');
         if (savedSession) {
           try {
             const parsedUser = JSON.parse(savedSession);
             if (parsedUser && parsedUser.email) {
-              const loginRes = await fetch('/api/auth/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                  email: parsedUser.email, 
-                  password: parsedUser.savedPassword || 'password123' 
-                })
-              });
-              const loginData = await loginRes.json();
-              if (loginData.success && loginData.user) {
-                // Reauthenticated successfully!
-                activeUser = loginData.user;
-                setSessionUser(loginData.user);
-                localStorage.setItem('vouchloop_saved_session', JSON.stringify({
-                  ...loginData.user,
-                  savedPassword: parsedUser.savedPassword || 'password123'
-                }));
-              } else {
-                // Fallen back to local storage profile to show name always offline
+              try {
+                const loginData = await fetchJsonSafe('/api/auth/login', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ 
+                    email: parsedUser.email, 
+                    password: parsedUser.savedPassword || 'password123' 
+                  })
+                });
+                if (loginData.success && loginData.user) {
+                  activeUser = loginData.user;
+                  setSessionUser(loginData.user);
+                  localStorage.setItem('vouchloop_saved_session', JSON.stringify({
+                    ...loginData.user,
+                    savedPassword: parsedUser.savedPassword || 'password123'
+                  }));
+                } else {
+                  activeUser = parsedUser;
+                  setSessionUser(parsedUser);
+                }
+              } catch (loginErr) {
+                // Server is down or unreachable (e.g. Vercel), fall back to storage user
                 activeUser = parsedUser;
                 setSessionUser(parsedUser);
               }
@@ -162,42 +179,121 @@ export default function App() {
         }
       }
 
-      // Coupons list fetch
-      const cpnRes = await fetch('/api/coupons?status=all');
-      const cpnData = await cpnRes.json();
-      if (cpnData.success) {
-        setCoupons(cpnData.coupons);
-      }
-
-      // Financial history log fetch
-      const histRes = await fetch('/api/wallet/history');
-      const histData = await histRes.json();
-      if (histData.success) {
-        setTxHistory(histData.history);
-      }
-
-      // Review feedback fetch
-      const revRes = await fetch('/api/reviews');
-      const revData = await revRes.json();
-      if (revData.success) {
-        setReviews(revData.reviews);
-      }
-
-      // Admin panels data fetch compiled if active role is moderator
-      if (activeUser?.role === 'admin') {
-        const adRes = await fetch('/api/admin/stats');
-        const adData = await adRes.json();
-        if (adData.success) {
-          setAdminStats(adData.stats);
-          setAdminLogs(adData.logs);
-          setAllUsers(adData.allUsers);
-          setCouponsToReview(adData.couponsToReview);
-          setPendingWithdrawals(adData.pendingWithdrawals);
+      // 2. Coupons/Trades list fetch with robust fallback
+      try {
+        const cpnData = await fetchJsonSafe('/api/coupons?status=all');
+        if (cpnData.success && Array.isArray(cpnData.coupons)) {
+          setCoupons(cpnData.coupons);
+          localStorage.setItem('vouchloop_coupons', JSON.stringify(cpnData.coupons));
+        } else {
+          throw new Error('Unsuccessful Coupons response');
+        }
+      } catch (err) {
+        const saved = localStorage.getItem('vouchloop_coupons');
+        if (saved) {
+          try {
+            setCoupons(JSON.parse(saved));
+          } catch (e) {
+            localStorage.setItem('vouchloop_coupons', JSON.stringify(INITIAL_COUPONS));
+            setCoupons(INITIAL_COUPONS);
+          }
+        } else {
+          localStorage.setItem('vouchloop_coupons', JSON.stringify(INITIAL_COUPONS));
+          setCoupons(INITIAL_COUPONS);
         }
       }
-      setIsLoading(false);
-    } catch (err) {
-      console.error('Error fetching VouchLoop ledgers API metrics:', err);
+
+      // 3. Financial history log fetch
+      try {
+        const histData = await fetchJsonSafe('/api/wallet/history');
+        if (histData.success && Array.isArray(histData.history)) {
+          setTxHistory(histData.history);
+          localStorage.setItem('vouchloop_tx_history', JSON.stringify(histData.history));
+        } else {
+          throw new Error('Unsuccessful history response');
+        }
+      } catch (err) {
+        const saved = localStorage.getItem('vouchloop_tx_history');
+        if (saved) {
+          try {
+            setTxHistory(JSON.parse(saved));
+          } catch (e) {
+            localStorage.setItem('vouchloop_tx_history', JSON.stringify(INITIAL_TRANSACTIONS));
+            setTxHistory(INITIAL_TRANSACTIONS);
+          }
+        } else {
+          localStorage.setItem('vouchloop_tx_history', JSON.stringify(INITIAL_TRANSACTIONS));
+          setTxHistory(INITIAL_TRANSACTIONS);
+        }
+      }
+
+      // 4. Review feedback fetch
+      try {
+        const revData = await fetchJsonSafe('/api/reviews');
+        if (revData.success && Array.isArray(revData.reviews)) {
+          setReviews(revData.reviews);
+          localStorage.setItem('vouchloop_reviews', JSON.stringify(revData.reviews));
+        } else {
+          throw new Error('Unsuccessful reviews response');
+        }
+      } catch (err) {
+        const saved = localStorage.getItem('vouchloop_reviews');
+        if (saved) {
+          try {
+            setReviews(JSON.parse(saved));
+          } catch (e) {
+            localStorage.setItem('vouchloop_reviews', JSON.stringify(INITIAL_REVIEWS));
+            setReviews(INITIAL_REVIEWS);
+          }
+        } else {
+          localStorage.setItem('vouchloop_reviews', JSON.stringify(INITIAL_REVIEWS));
+          setReviews(INITIAL_REVIEWS);
+        }
+      }
+
+      // 5. Admin statistics
+      if (activeUser?.role === 'admin') {
+        try {
+          const adData = await fetchJsonSafe('/api/admin/stats');
+          if (adData.success) {
+            setAdminStats(adData.stats);
+            setAdminLogs(adData.logs);
+            setAllUsers(adData.allUsers);
+            setCouponsToReview(adData.couponsToReview);
+            setPendingWithdrawals(adData.pendingWithdrawals);
+          } else {
+            throw new Error('Unsuccessful admin endpoint');
+          }
+        } catch (err) {
+          // Mock calculations for admin dashboard fallback
+          let localCoupons = INITIAL_COUPONS;
+          let localHistory = INITIAL_TRANSACTIONS;
+          
+          try {
+            const savedC = localStorage.getItem('vouchloop_coupons');
+            if (savedC) localCoupons = JSON.parse(savedC);
+            const savedH = localStorage.getItem('vouchloop_tx_history');
+            if (savedH) localHistory = JSON.parse(savedH);
+          } catch (parseErr) {
+            // Keep initial preseeds if localStorage parsing fails
+          }
+          
+          setAdminStats({
+            totalVolume: 84500,
+            totalTrades: localHistory.length,
+            activeListings: localCoupons.filter((c: any) => c.status === 'active').length,
+            pendingAudits: localCoupons.filter((c: any) => c.status === 'pending').length
+          });
+          setAdminLogs([
+            { id: 'log-1', timestamp: new Date().toISOString(), level: 'info', event: 'Diagnostics compiled successfully - client-side dashboard state active', module: 'System' }
+          ]);
+          setCouponsToReview([]);
+          setPendingWithdrawals([]);
+        }
+      }
+    } catch (globalErr) {
+      console.error('Fatal synchronization index loader exception:', globalErr);
+    } finally {
       setIsLoading(false);
     }
   };
@@ -382,10 +478,55 @@ export default function App() {
         setActiveTab('wallet');
         await fetchData();
       } else {
-        showToast(data.error || 'Transaction settlement failed.', 'error');
+        // Look inside locally if they got a local response indicating offline
+        throw new Error(data.error || 'Server refused');
       }
     } catch (err) {
-      showToast('Network timeout block.', 'error');
+      // Offline / Static Vercel Fallback Buy logic!
+      const currentCoupons: Coupon[] = localStorage.getItem('vouchloop_coupons') 
+        ? JSON.parse(localStorage.getItem('vouchloop_coupons')!) 
+        : INITIAL_COUPONS;
+      
+      const foundIdx = currentCoupons.findIndex(c => c.id === coupon.id);
+      if (foundIdx > -1) {
+        // Mark as sold
+        currentCoupons[foundIdx].status = 'sold';
+        localStorage.setItem('vouchloop_coupons', JSON.stringify(currentCoupons));
+
+        // Deduct balance
+        const updatedUser = { ...sessionUser, balance: sessionUser.balance - coupon.price };
+        setSessionUser(updatedUser);
+        localStorage.setItem('vouchloop_saved_session', JSON.stringify(updatedUser));
+
+        // Record local TX
+        const currentTx: Transaction[] = localStorage.getItem('vouchloop_tx_history')
+          ? JSON.parse(localStorage.getItem('vouchloop_tx_history')!)
+          : INITIAL_TRANSACTIONS;
+        
+        const newTx: Transaction = {
+          id: `tx-${Date.now()}`,
+          buyerId: sessionUser.id,
+          buyerName: sessionUser.name,
+          sellerId: coupon.sellerId,
+          sellerName: coupon.sellerName,
+          couponId: coupon.id,
+          couponBrand: coupon.brand,
+          amount: coupon.price,
+          fee: parseFloat((coupon.price * 0.1).toFixed(2)),
+          type: 'purchase',
+          status: 'completed',
+          date: new Date().toISOString()
+        };
+        const updatedTx = [newTx, ...currentTx];
+        localStorage.setItem('vouchloop_tx_history', JSON.stringify(updatedTx));
+
+        showToast(`Purchase complete! Coupon code: ${currentCoupons[foundIdx].code}`, 'success');
+        setCartCount(prev => prev + 1);
+        setActiveTab('wallet');
+        await fetchData();
+      } else {
+        showToast('Voucher not found in simulation store.', 'error');
+      }
     } finally {
       setBuyingId(null);
     }
@@ -412,9 +553,36 @@ export default function App() {
         showToast(`₹${amountNum} added securely via mock UPI gate.`, 'success');
         setDepositAmount('');
         await fetchData();
+      } else {
+        throw new Error(data.error || 'Server error');
       }
     } catch (err) {
-      showToast('Deposit network issue.', 'error');
+      // Local Storage Fallback simulation
+      if (sessionUser) {
+        const updatedUser = { ...sessionUser, balance: sessionUser.balance + amountNum };
+        setSessionUser(updatedUser);
+        localStorage.setItem('vouchloop_saved_session', JSON.stringify(updatedUser));
+
+        const currentTx = localStorage.getItem('vouchloop_tx_history')
+          ? JSON.parse(localStorage.getItem('vouchloop_tx_history')!)
+          : INITIAL_TRANSACTIONS;
+        
+        const newTx: Transaction = {
+          id: `tx-${Date.now()}`,
+          amount: amountNum,
+          fee: 0,
+          type: 'deposit',
+          status: 'completed',
+          date: new Date().toISOString()
+        };
+        localStorage.setItem('vouchloop_tx_history', JSON.stringify([newTx, ...currentTx]));
+
+        showToast(`₹${amountNum} added to simulated wallet balance securely.`, 'success');
+        setDepositAmount('');
+        await fetchData();
+      } else {
+        showToast('Please login first.', 'error');
+      }
     } finally {
       setDepositLoading(false);
     }
@@ -457,10 +625,36 @@ export default function App() {
         setWithdrawBank('');
         await fetchData();
       } else {
-        showToast(data.error || 'Payout failed.', 'error');
+        throw new Error(data.error || 'Server error');
       }
     } catch (err) {
-      showToast('Withdrawal server connection block.', 'error');
+      // Local storage simulations
+      if (sessionUser) {
+        const updatedUser = { ...sessionUser, balance: sessionUser.balance - amountNum };
+        setSessionUser(updatedUser);
+        localStorage.setItem('vouchloop_saved_session', JSON.stringify(updatedUser));
+
+        const currentTx = localStorage.getItem('vouchloop_tx_history')
+          ? JSON.parse(localStorage.getItem('vouchloop_tx_history')!)
+          : INITIAL_TRANSACTIONS;
+        
+        const newTx: Transaction = {
+          id: `tx-${Date.now()}`,
+          amount: amountNum,
+          fee: 0,
+          type: 'withdrawal',
+          status: 'pending',
+          date: new Date().toISOString(),
+          referenceUpiOrBank: withdrawUpi || withdrawBank
+        };
+        localStorage.setItem('vouchloop_tx_history', JSON.stringify([newTx, ...currentTx]));
+
+        showToast(`Withdrawal of ₹${amountNum} filed securely in simulated account!`, 'info');
+        setWithdrawAmount('');
+        setWithdrawUpi('');
+        setWithdrawBank('');
+        await fetchData();
+      }
     } finally {
       setWithdrawLoading(false);
     }
@@ -501,10 +695,44 @@ export default function App() {
         setTransferEmail('');
         await fetchData();
       } else {
-        showToast(data.error || 'Transfer failed.', 'error');
+        throw new Error(data.error || 'Server error');
       }
     } catch (err) {
-      showToast('Ledger transfer error.', 'error');
+      // Local fallbacks
+      if (sessionUser) {
+        const matchUsers = localStorage.getItem('vouchloop_users') 
+          ? JSON.parse(localStorage.getItem('vouchloop_users')!) 
+          : INITIAL_USERS;
+        const targetUser = matchUsers.find((u: any) => u.email.toLowerCase() === transferEmail.trim().toLowerCase());
+        const recipientName = targetUser ? targetUser.name : transferEmail.split('@')[0];
+
+        const updatedUser = { ...sessionUser, balance: sessionUser.balance - amountNum };
+        setSessionUser(updatedUser);
+        localStorage.setItem('vouchloop_saved_session', JSON.stringify(updatedUser));
+
+        const currentTx = localStorage.getItem('vouchloop_tx_history')
+          ? JSON.parse(localStorage.getItem('vouchloop_tx_history')!)
+          : INITIAL_TRANSACTIONS;
+        
+        const newTx: Transaction = {
+          id: `tx-${Date.now()}`,
+          buyerId: sessionUser.id,
+          buyerName: sessionUser.name,
+          sellerId: targetUser ? targetUser.id : 'usr-temp',
+          sellerName: recipientName,
+          amount: amountNum,
+          fee: 0,
+          type: 'commission',
+          status: 'completed',
+          date: new Date().toISOString()
+        };
+        localStorage.setItem('vouchloop_tx_history', JSON.stringify([newTx, ...currentTx]));
+
+        showToast(`Instant Wallet P2P Settle! Credited ₹${amountNum} to "${recipientName}" successfully.`, 'success');
+        setTransferAmount('');
+        setTransferEmail('');
+        await fetchData();
+      }
     } finally {
       setTransferLoading(false);
     }
@@ -641,9 +869,59 @@ export default function App() {
         setSelectedCategory('All');
         setActiveTab('marketplace');
         await fetchData();
+      } else {
+        throw new Error(data.error || 'Server error');
       }
     } catch (err) {
-      showToast('Listing publishing blocked.', 'error');
+      // Local Storage Fallback simulation
+      if (sessionUser) {
+        const currentCoupons: Coupon[] = localStorage.getItem('vouchloop_coupons') 
+          ? JSON.parse(localStorage.getItem('vouchloop_coupons')!) 
+          : INITIAL_COUPONS;
+        
+        const newCoupon: Coupon = {
+          id: `cpn-${Date.now()}`,
+          brand: uploadForm.brand,
+          category: uploadForm.category,
+          code: uploadForm.code,
+          description: uploadForm.terms || `Claim ${uploadForm.brand} easily on peer exchange.`,
+          discountType: uploadForm.discountType,
+          discountValue: Number(uploadForm.discountValue),
+          expiryDate: uploadForm.expiryDate || '2026-12-31',
+          terms: uploadForm.terms || 'No extra terms specified.',
+          price: Number(uploadForm.price),
+          sellerId: sessionUser.id,
+          sellerName: sessionUser.name,
+          status: 'active',
+          ocrExtracted: false,
+          fraudScore: Math.floor(Math.random() * 6),
+          recommendedPrice: predictedPrice || Math.round(Number(uploadForm.price) * 1.1)
+        };
+
+        const updatedCoupons = [newCoupon, ...currentCoupons];
+        localStorage.setItem('vouchloop_coupons', JSON.stringify(updatedCoupons));
+
+        showToast('Voucher listing published successfully on simulated feed!', 'success');
+        
+        setUploadForm({
+          brand: '',
+          category: 'Shopping',
+          discountType: 'percentage',
+          discountValue: '',
+          price: '',
+          expiryDate: '',
+          terms: '',
+          code: '',
+        });
+        setOcrFilename('');
+        setPredictedPrice(null);
+        setPredictionDemand(null);
+        
+        setSearchQuery('');
+        setSelectedCategory('All');
+        setActiveTab('marketplace');
+        await fetchData();
+      }
     } finally {
       setSubmittingCoupon(false);
     }

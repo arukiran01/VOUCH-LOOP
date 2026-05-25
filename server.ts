@@ -269,6 +269,13 @@ async function pullFromSupabase() {
     }
 
     fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8');
+
+    // Auto-seed Supabase database if it is currently empty
+    if (!sUsers || sUsers.length === 0) {
+      console.log('--- AUTO-SEED: Supabase users table is empty. Seeding remote database with initial master dataset... ---');
+      await syncToSupabase(db);
+    }
+
     console.log('Successfully completed Supabase state synchronizer loading!');
   } catch (err) {
     console.error('Failed to restore master state from Supabase:', err);
