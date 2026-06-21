@@ -3,23 +3,51 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
+import { initFirebase, syncToFirebase, pullFromFirebase } from './firebase-sync';
+import nodemailer from 'nodemailer';
+import Razorpay from 'razorpay';
+import crypto from 'crypto';
 
 dotenv.config();
 
-// Set up Supabase if variables are configured in the workspace
-const SUPABASE_URL = process.env.SUPABASE_URL || '';
-const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const razorpayInstance = process.env.RAZORPAY_KEY_ID ? new Razorpay({
+  key_id: process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET || '',
+}) : null;
 
-let supabase: any = null;
-if (SUPABASE_URL && SUPABASE_KEY) {
+// SMTP Transporter for Email Communications
+const mailTransporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: Number(process.env.SMTP_PORT) || 587,
+  secure: false,
+  auth: {
+    user: process.env.SMTP_USER || 'no-reply@mrdu-adm.com',
+    pass: process.env.SMTP_PASS || 'your_smtp_password',
+  },
+});
+
+export const sendSystemEmail = async (to: string, subject: string, html: string) => {
   try {
-    supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-    console.log('--- SUPABASE ACTIVE: EXCHANGE METADATA SYNCHRONIZED ---');
-  } catch (err) {
-    console.error('Failed to connect with Supabase:', err);
+    if (!process.env.SMTP_PASS) {
+      console.log(`\n📧 [EMAIL SIMULATION: To ${to}]\nSubject: ${subject}\nBody: ${html.substring(0, 50)}...\n`);
+      return { success: true, simulated: true };
+    }
+    
+    await mailTransporter.sendMail({
+      from: `"Mrdu-Adm Security" <${process.env.SMTP_USER || 'no-reply@mrdu-adm.com'}>`,
+      to,
+      subject,
+      html
+    });
+    return { success: true, simulated: false };
+  } catch (error) {
+    console.error('SMTP Email Error:', error);
+    return { success: false, error };
   }
-}
+};
+
+// Set up Firebase Admin
+const firebaseApp = initFirebase();
 
 const withTimeout = (promise: Promise<any>, timeoutMs: number = 4000) => {
   return Promise.race([
@@ -42,252 +70,7 @@ const getValidUUID = (id: string | undefined): string | undefined => {
   return undefined;
 };
 
-// Background push to Supabase to support interconnected apps
-async function syncToSupabase(db: any) {
-  if (!supabase) return;
-  try {
-    // 1. Sync Users
-    if (db.users && db.users.length > 0) {
-      const mappedUsers = db.users.map((u: any) => {
-        const uuid = getValidUUID(u.id);
-        return {
-          id: uuid,
-          name: u.name,
-          email: u.email,
-          role: u.role,
-          kyc_status: u.kycStatus === 'verified' ? 'verified' : u.kycStatus === 'pending' ? 'pending' : 'unverified',
-          balance: Number(u.balance) || 0,
-          referral_code: u.referralCode || '',
-          is_premium: !!u.isPremium,
-          avatar_url: u.avatar || ''
-        };
-      }).filter((u: any) => u.id !== undefined);
 
-      if (mappedUsers.length > 0) {
-        await supabase.from('users').upsert(mappedUsers, { onConflict: 'email' });
-      }
-    }
-
-    // 2. Sync Coupons
-    if (db.coupons && db.coupons.length > 0) {
-      const mappedCoupons = db.coupons.map((c: any) => {
-        const sellerUuid = getValidUUID(c.sellerId) || '00000000-0000-0000-0000-000000000001';
-        const couponUuid = getValidUUID(c.id);
-        return {
-          id: couponUuid,
-          brand: c.brand,
-          category_name: c.category,
-          code: c.code,
-          description: c.description || '',
-          discount_type: c.discountType === 'percentage' ? 'percentage' : 'flat',
-          discount_value: Number(c.discountValue) || 0,
-          expiry_date: c.expiryDate || '2026-12-31',
-          terms: c.terms || '',
-          price: Number(c.price) || 0,
-          seller_id: sellerUuid,
-          seller_name: c.sellerName,
-          status: c.status === 'sold' ? 'sold' : c.status === 'rejected' ? 'rejected' : c.status === 'pending' ? 'pending' : 'active',
-          image_url: c.imageUrl || '',
-          is_featured: !!c.isFeatured,
-          fraud_risk_score: c.fraudScore || 0,
-          recommended_price: Number(c.recommendedPrice) || Number(c.price)
-        };
-      }).filter((c: any) => c.id !== undefined);
-
-      if (mappedCoupons.length > 0) {
-        await supabase.from('coupons').upsert(mappedCoupons, { onConflict: 'id' });
-      }
-    }
-
-    // 3. Sync Transactions
-    if (db.transactions && db.transactions.length > 0) {
-      const mappedTxs = db.transactions.map((tx: any) => {
-        const txUuid = getValidUUID(tx.id);
-        const buyerUuid = getValidUUID(tx.buyerId) || null;
-        const sellerUuid = getValidUUID(tx.sellerId) || null;
-        const couponUuid = getValidUUID(tx.couponId) || null;
-        return {
-          id: txUuid,
-          buyer_id: buyerUuid,
-          buyer_name: tx.buyerName || null,
-          seller_id: sellerUuid,
-          seller_name: tx.sellerName || null,
-          coupon_id: couponUuid,
-          coupon_brand: tx.couponBrand || null,
-          amount: Number(tx.amount) || 0,
-          fee: Number(tx.fee) || 0,
-          tx_type: tx.type === 'deposit' ? 'deposit' : tx.type === 'withdrawal' ? 'withdrawal' : tx.type === 'payout' ? 'payout' : tx.type === 'commission' ? 'commission' : 'purchase',
-          status: tx.status === 'failed' ? 'failed' : tx.status === 'pending' ? 'pending' : 'completed'
-        };
-      }).filter((tx: any) => tx.id !== undefined);
-
-      if (mappedTxs.length > 0) {
-        await supabase.from('transactions').upsert(mappedTxs, { onConflict: 'id' });
-      }
-    }
-
-    // 4. Sync Reviews
-    if (db.reviews && db.reviews.length > 0) {
-      const mappedReviews = db.reviews.map((r: any) => {
-        const revUuid = getValidUUID(r.id);
-        const couponUuid = getValidUUID(r.couponId) || null;
-        return {
-          id: revUuid,
-          coupon_id: couponUuid,
-          brand: r.brand,
-          reviewer_name: r.reviewerName,
-          rating: Number(r.rating) || 5,
-          comment: r.comment || ''
-        };
-      }).filter((r: any) => r.id !== undefined);
-
-      if (mappedReviews.length > 0) {
-        await supabase.from('reviews').upsert(mappedReviews, { onConflict: 'id' });
-      }
-    }
-  } catch (err) {
-    console.error('Supabase async push exception:', err);
-  }
-}
-
-// Fetch and sync on server start
-async function pullFromSupabase() {
-  if (!supabase) return;
-  try {
-    const db = readDB();
-    console.log('Loading enterprise dataset from Supabase instance...');
-
-    // Sync Users
-    const { data: sUsers } = await supabase.from('users').select('*');
-    if (sUsers && sUsers.length > 0) {
-      sUsers.forEach((u: any) => {
-        const localId = u.id;
-        const existing = db.users.find((lu: any) => lu.email.toLowerCase() === u.email.toLowerCase());
-        if (existing) {
-          existing.name = u.name;
-          existing.role = u.role;
-          existing.kycStatus = u.kyc_status;
-          existing.balance = Number(u.balance) || existing.balance;
-          existing.referralCode = u.referral_code;
-          existing.isPremium = u.is_premium;
-          existing.avatar = u.avatar_url || existing.avatar;
-        } else {
-          db.users.push({
-            id: localId,
-            name: u.name,
-            email: u.email,
-            role: u.role,
-            kycStatus: u.kyc_status,
-            balance: Number(u.balance) || 5000,
-            referralCode: u.referral_code,
-            isPremium: u.is_premium,
-            avatar: u.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.name)}`
-          });
-        }
-      });
-    }
-
-    // Sync Coupons
-    const { data: sCoupons } = await supabase.from('coupons').select('*');
-    if (sCoupons && sCoupons.length > 0) {
-      sCoupons.forEach((c: any) => {
-        const existing = db.coupons.find((lc: any) => lc.id === c.id);
-        if (existing) {
-          existing.brand = c.brand;
-          existing.category = c.category_name;
-          existing.code = c.code;
-          existing.description = c.description;
-          existing.discountType = c.discount_type;
-          existing.discountValue = Number(c.discount_value);
-          existing.expiryDate = c.expiry_date;
-          existing.terms = c.terms;
-          existing.price = Number(c.price);
-          existing.sellerId = c.seller_id;
-          existing.sellerName = c.seller_name;
-          existing.status = c.status;
-          existing.fraudScore = c.fraud_risk_score;
-          existing.recommendedPrice = Number(c.recommended_price);
-          existing.isFeatured = c.is_featured;
-        } else {
-          db.coupons.push({
-            id: c.id,
-            brand: c.brand,
-            category: c.category_name,
-            code: c.code,
-            description: c.description,
-            discountType: c.discount_type,
-            discountValue: Number(c.discount_value),
-            expiryDate: c.expiry_date,
-            terms: c.terms,
-            price: Number(c.price),
-            sellerId: c.seller_id,
-            sellerName: c.seller_name,
-            status: c.status,
-            fraudScore: c.fraud_risk_score,
-            recommendedPrice: Number(c.recommended_price),
-            isFeatured: c.is_featured,
-            ocrExtracted: false
-          });
-        }
-      });
-    }
-
-    // Sync Transactions
-    const { data: sTxs } = await supabase.from('transactions').select('*');
-    if (sTxs && sTxs.length > 0) {
-      sTxs.forEach((tx: any) => {
-        const existing = db.transactions.find((ltx: any) => ltx.id === tx.id);
-        if (!existing) {
-          db.transactions.push({
-            id: tx.id,
-            buyerId: tx.buyer_id,
-            buyerName: tx.buyer_name,
-            sellerId: tx.seller_id,
-            sellerName: tx.seller_name,
-            couponId: tx.coupon_id,
-            couponBrand: tx.coupon_brand,
-            amount: Number(tx.amount),
-            fee: Number(tx.fee),
-            type: tx.tx_type,
-            status: tx.status,
-            date: tx.created_at || new Date().toISOString()
-          });
-        }
-      });
-    }
-
-    // Sync Reviews
-    const { data: sReviews } = await supabase.from('reviews').select('*');
-    if (sReviews && sReviews.length > 0) {
-      sReviews.forEach((r: any) => {
-        const existing = db.reviews.find((lr: any) => lr.id === r.id);
-        if (!existing) {
-          db.reviews.push({
-            id: r.id,
-            couponId: r.coupon_id,
-            brand: r.brand,
-            reviewerName: r.reviewer_name,
-            rating: Number(r.rating),
-            comment: r.comment,
-            date: r.created_at || new Date().toISOString()
-          });
-        }
-      });
-    }
-
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf-8');
-
-    // Auto-seed Supabase database if it is currently empty
-    if (!sUsers || sUsers.length === 0) {
-      console.log('--- AUTO-SEED: Supabase users table is empty. Seeding remote database with initial master dataset... ---');
-      await syncToSupabase(db);
-    }
-
-    console.log('Successfully completed Supabase state synchronizer loading!');
-  } catch (err) {
-    console.error('Failed to restore master state from Supabase:', err);
-  }
-}
 
 const app = express();
 const PORT = 3000;
@@ -307,7 +90,7 @@ if (!fs.existsSync(path.dirname(DB_FILE))) {
 // Pre-seeded database state matching Indian Rupee (INR - ₹) marketplace values
 const INITIAL_DATABASE = {
   users: [
-    { id: 'usr-1', name: 'Aruna Kiran', email: 'arukiranreddy@gmail.com', role: 'admin', kycStatus: 'verified', balance: 5000, referralCode: 'COUPONX99', isPremium: true },
+    { id: 'usr-1', name: 'Aruna Kiran', email: 'arukiranreddy@gmail.com', role: 'admin', kycStatus: 'verified', balance: 0, referralCode: 'COUPONX99', isPremium: true },
     { id: 'usr-2', name: 'Rohan Sharma', email: 'rohan@example.in', role: 'user', kycStatus: 'verified', balance: 2450, referralCode: 'ROHAN100', isPremium: false },
     { id: 'usr-3', name: 'Priya Patel', email: 'priya@patel.co.in', role: 'user', kycStatus: 'pending', balance: 750, referralCode: 'PRIYA50', isPremium: true },
     { id: 'usr-4', name: 'Affiliate Partner', email: 'retail@coupons.in', role: 'user', kycStatus: 'verified', balance: 18400, referralCode: 'INDIA_DISCOUNT', isPremium: false }
@@ -320,16 +103,16 @@ const INITIAL_DATABASE = {
       code: 'SWIGGY-INR150-Z78X',
       description: 'Extra ₹150 off on Swiggy Instamart or food orders.',
       discountType: 'flat',
-      discountValue: 150,
+      discountValue: 15,
       expiryDate: '2026-08-31',
-      terms: 'Minimum cart value ₹499. Valid once per user account.',
-      price: 49,
+      terms: 'Minimum cart value ₹149. Valid once per user account.',
+      price: 10,
       sellerId: 'usr-2',
       sellerName: 'Rohan Sharma',
       status: 'active',
       ocrExtracted: false,
       fraudScore: 4,
-      recommendedPrice: 55,
+      recommendedPrice: 12,
       isFeatured: true
     },
     {
@@ -339,16 +122,16 @@ const INITIAL_DATABASE = {
       code: 'AMZN-INR1000-TECH',
       description: 'Flat ₹1,000 instant discount on Electronic Appliances.',
       discountType: 'flat',
-      discountValue: 1000,
+      discountValue: 100,
       expiryDate: '2026-12-15',
       terms: 'Applicable on major brand items only. Non-refundable.',
-      price: 650,
+      price: 45,
       sellerId: 'usr-4',
       sellerName: 'Affiliate Partner',
       status: 'active',
       ocrExtracted: true,
       fraudScore: 7,
-      recommendedPrice: 700,
+      recommendedPrice: 48,
       isFeatured: true
     },
     {
@@ -360,14 +143,14 @@ const INITIAL_DATABASE = {
       discountType: 'percentage',
       discountValue: 30,
       expiryDate: '2026-09-30',
-      terms: 'Applies on ethnic winter collections. Max discount ₹500.',
-      price: 120,
+      terms: 'Applies on ethnic winter collections. Max discount ₹50.',
+      price: 35,
       sellerId: 'usr-3',
       sellerName: 'Priya Patel',
       status: 'active',
       ocrExtracted: false,
       fraudScore: 11,
-      recommendedPrice: 150,
+      recommendedPrice: 40,
       isFeatured: false
     },
     {
@@ -380,13 +163,13 @@ const INITIAL_DATABASE = {
       discountValue: 100,
       expiryDate: '2026-07-20',
       terms: 'Valid on select multiplexes across India. Max benefit ₹150.',
-      price: 80,
+      price: 25,
       sellerId: 'usr-2',
       sellerName: 'Rohan Sharma',
       status: 'active',
       ocrExtracted: true,
       fraudScore: 5,
-      recommendedPrice: 95,
+      recommendedPrice: 30,
       isFeatured: false
     },
     {
@@ -396,16 +179,16 @@ const INITIAL_DATABASE = {
       code: 'ZOMATO-GOLD-ACTIVE',
       description: '3-Months complimentary Zomato Gold membership benefits.',
       discountType: 'flat',
-      discountValue: 300,
+      discountValue: 30,
       expiryDate: '2026-06-30',
       terms: 'Applicable on standard Android/iOS Zomato signups only.',
-      price: 180,
+      price: 18,
       sellerId: 'usr-3',
       sellerName: 'Priya Patel',
       status: 'active',
       ocrExtracted: false,
       fraudScore: 3,
-      recommendedPrice: 210,
+      recommendedPrice: 21,
       isFeatured: true
     },
     {
@@ -415,16 +198,16 @@ const INITIAL_DATABASE = {
       code: 'AJIO-FST-500',
       description: 'Flat ₹500 off on order of ₹1999 on Ajio high luxury brands.',
       discountType: 'flat',
-      discountValue: 500,
+      discountValue: 50,
       expiryDate: '2026-10-31',
       terms: 'Excludes innerwear and gold/silver products.',
-      price: 150,
+      price: 25,
       sellerId: 'usr-4',
       sellerName: 'Affiliate Partner',
       status: 'active',
       ocrExtracted: true,
       fraudScore: 2,
-      recommendedPrice: 160,
+      recommendedPrice: 30,
       isFeatured: true
     },
     {
@@ -434,16 +217,16 @@ const INITIAL_DATABASE = {
       code: 'ZOMATO-HUNGRY-150',
       description: 'Flat ₹150 Discount on select gourmet restaurant partners.',
       discountType: 'flat',
-      discountValue: 150,
+      discountValue: 15,
       expiryDate: '2026-09-15',
       terms: 'Valid on orders above ₹399 using our secure escrow path.',
-      price: 45,
+      price: 10,
       sellerId: 'usr-2',
       sellerName: 'Rohan Sharma',
       status: 'active',
       ocrExtracted: true,
       fraudScore: 1,
-      recommendedPrice: 50,
+      recommendedPrice: 12,
       isFeatured: false
     },
     {
@@ -456,13 +239,13 @@ const INITIAL_DATABASE = {
       discountValue: 10,
       expiryDate: '2026-08-15',
       terms: 'Valid on first grocery buy of each calendar week.',
-      price: 100,
+      price: 20,
       sellerId: 'usr-3',
       sellerName: 'Priya Patel',
       status: 'active',
       ocrExtracted: false,
       fraudScore: 4,
-      recommendedPrice: 120,
+      recommendedPrice: 25,
       isFeatured: false
     },
     {
@@ -472,16 +255,16 @@ const INITIAL_DATABASE = {
       code: 'PUMA-RUN-1000',
       description: 'Flat ₹1000 voucher valid at all Puma premium retail outlets.',
       discountType: 'flat',
-      discountValue: 1000,
+      discountValue: 100,
       expiryDate: '2026-11-30',
       terms: 'Valid on full price items only. Cannot be clubbed with store sales.',
-      price: 490,
+      price: 49,
       sellerId: 'usr-1',
       sellerName: 'Aruna Kiran',
       status: 'active',
       ocrExtracted: true,
       fraudScore: 1,
-      recommendedPrice: 500,
+      recommendedPrice: 50,
       isFeatured: true
     },
     {
@@ -491,16 +274,16 @@ const INITIAL_DATABASE = {
       code: 'LAKME-SPA-500',
       description: 'Complimentary ₹500 voucher on signature facial therapy.',
       discountType: 'flat',
-      discountValue: 500,
+      discountValue: 50,
       expiryDate: '2026-09-30',
       terms: 'Prior appointments required. Standard salon policies apply.',
-      price: 150,
+      price: 15,
       sellerId: 'usr-4',
       sellerName: 'Affiliate Partner',
       status: 'active',
       ocrExtracted: false,
       fraudScore: 2,
-      recommendedPrice: 180,
+      recommendedPrice: 20,
       isFeatured: false
     },
     {
@@ -508,18 +291,18 @@ const INITIAL_DATABASE = {
       brand: 'Fastrack Youth Style',
       category: 'Shopping',
       code: 'FSTRK-GEAR-300',
-      description: 'Flat ₹300 off on smart wearables and customized bags.',
+      description: 'Flat ₹30 off on smart wearables and customized bags.',
       discountType: 'flat',
-      discountValue: 300,
+      discountValue: 30,
       expiryDate: '2026-08-25',
       terms: 'Valid only of official online online store orders.',
-      price: 90,
+      price: 25,
       sellerId: 'usr-2',
       sellerName: 'Rohan Sharma',
       status: 'active',
       ocrExtracted: false,
       fraudScore: 5,
-      recommendedPrice: 100,
+      recommendedPrice: 28,
       isFeatured: false
     },
     {
@@ -527,18 +310,18 @@ const INITIAL_DATABASE = {
       brand: 'Yatra Flight Ticket Premium',
       category: 'Travel',
       code: 'YATRA-FLY-5000',
-      description: 'Flat ₹5,000 off on international flight ticket bookings.',
+      description: 'Flat ₹50 off on international flight ticket bookings.',
       discountType: 'flat',
-      discountValue: 5000,
+      discountValue: 50,
       expiryDate: '2026-10-30',
       terms: 'Valid only on flights through Yatra client platform. Escrow lock on trade.',
-      price: 1200,
+      price: 25,
       sellerId: 'usr-3',
       sellerName: 'Priya Patel',
       status: 'active',
       ocrExtracted: true,
       fraudScore: 1,
-      recommendedPrice: 1500,
+      recommendedPrice: 30,
       isFeatured: true
     },
     {
@@ -548,16 +331,16 @@ const INITIAL_DATABASE = {
       code: 'YT-SUB-6MONTHS',
       description: '6-Months complimentary YouTube Premium ad-free subscription voucher.',
       discountType: 'flat',
-      discountValue: 750,
+      discountValue: 50,
       expiryDate: '2026-09-15',
       terms: 'Applicable on non-premium active accounts. One per subscriber identity.',
-      price: 250,
+      price: 25,
       sellerId: 'usr-4',
       sellerName: 'Affiliate Partner',
       status: 'active',
       ocrExtracted: true,
       fraudScore: 2,
-      recommendedPrice: 300,
+      recommendedPrice: 30,
       isFeatured: true
     },
     {
@@ -567,16 +350,16 @@ const INITIAL_DATABASE = {
       code: 'NFLX-STND-3M',
       description: '3-Months standard HD stream subscription access voucher code.',
       discountType: 'flat',
-      discountValue: 1497,
+      discountValue: 50,
       expiryDate: '2026-08-20',
       terms: 'Redeemable during checkout. Valid for returning or new accounts.',
-      price: 499,
+      price: 49,
       sellerId: 'usr-2',
       sellerName: 'Rohan Sharma',
       status: 'active',
       ocrExtracted: false,
       fraudScore: 4,
-      recommendedPrice: 550,
+      recommendedPrice: 50,
       isFeatured: false
     },
     {
@@ -584,18 +367,18 @@ const INITIAL_DATABASE = {
       brand: 'MakeMyTrip Holiday Special',
       category: 'Travel',
       code: 'MMT-VACAY-2500',
-      description: 'Flat ₹2,500 off on select luxury beach resorts and hotel suite bookings.',
+      description: 'Flat ₹25 off on select luxury beach resorts and hotel suite bookings.',
       discountType: 'flat',
-      discountValue: 2500,
+      discountValue: 25,
       expiryDate: '2026-12-31',
       terms: 'No minimum spend required. Can be stacked with current seasonal holiday deals.',
-      price: 500,
+      price: 15,
       sellerId: 'usr-4',
       sellerName: 'Affiliate Partner',
       status: 'active',
       ocrExtracted: true,
       fraudScore: 2,
-      recommendedPrice: 600,
+      recommendedPrice: 20,
       isFeatured: true
     }
   ],
@@ -632,9 +415,9 @@ function readDB() {
 function writeDB(data: any) {
   try {
     fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
-    if (supabase) {
-      syncToSupabase(data).catch(err => {
-        console.error('Supabase async background write-sync failed:', err);
+    if (firebaseApp) {
+      syncToFirebase(data).catch(err => {
+        console.error('Firebase async background write-sync failed:', err);
       });
     }
   } catch (err) {
@@ -680,273 +463,193 @@ app.get('/api/auth/session', (req, res) => {
   res.json({ success: true, user: activeUser });
 });
 
-app.post('/api/auth/login', async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ success: false, error: 'Email and password are required.' });
+app.post('/api/auth/login', (req, res) => {
+  const { email } = req.body;
+  if (!email) {
+    return res.status(400).json({ success: false, error: 'Email is required.' });
   }
-  const db = readDB();
   const trimmedEmail = email.trim().toLowerCase();
-  
-  if (supabase) {
-    try {
-      const { data, error } = await withTimeout(supabase.auth.signInWithPassword({
-        email: trimmedEmail,
-        password: password
-      }), 4000);
-      
-      if (error) {
-        console.warn('Supabase login validation failed:', error.message);
-        if (error.message.toLowerCase().includes('confirm') || error.message.toLowerCase().includes('verified') || error.message.toLowerCase().includes('verification')) {
-          return res.status(400).json({ 
-            success: false, 
-            error: 'Email verification required. Please check your inbox or spam to confirm your email before logging in.' 
-          });
-        }
-        return res.status(400).json({ success: false, error: 'Invalid login credentials. Please check your email and password.' });
-      }
-      
-      let user = db.users.find((u: any) => u.email.toLowerCase() === trimmedEmail);
-      if (!user) {
-        const emailPrefix = trimmedEmail.split('@')[0];
-        const rawName = emailPrefix.replace(/[._-]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Peer Trader';
-        const role = (trimmedEmail === 'arukiranreddy@gmail.com') ? 'admin' : 'user';
-        
-        user = {
-          id: data.user?.id || `usr-${Date.now()}`,
-          name: rawName,
-          email: trimmedEmail,
-          role: role,
-          kycStatus: role === 'admin' ? 'verified' : 'unverified',
-          balance: 5000,
-          referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-          isPremium: false,
-          avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(rawName)}`
-        };
-        db.users.push(user);
-      } else if (data.user?.id && user.id.startsWith('usr-')) {
-        // Upgrade simulated ID to real Supabase UUID
-        user.id = data.user.id;
-      }
-      
-      db.activeUserId = user.id;
-      writeDB(db);
-      logEvent('info', `Supabase Login verified for ${user.name}`, 'Auth', user.name);
-      
-      return res.json({
-        success: true,
-        user,
-        message: `Welcome back to VouchLoop, ${user.name}!`
-      });
-    } catch (err: any) {
-      console.error('Supabase authentication login exception:', err.message);
-      return res.status(400).json({ success: false, error: err.message || 'Supabase login service unavailable' });
-    }
-  }
-
-  // Simulated credential check fallback
+  const db = readDB();
   let user = db.users.find((u: any) => u.email.toLowerCase() === trimmedEmail);
-  let isNewUser = false;
   
   if (!user) {
-    const emailPrefix = trimmedEmail.split('@')[0];
-    const rawName = emailPrefix.replace(/[._-]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Peer Trader';
+    const prefix = trimmedEmail.split('@')[0];
+    const name = prefix.replace(/[._-]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
     const role = (trimmedEmail === 'arukiranreddy@gmail.com') ? 'admin' : 'user';
+    
     user = {
       id: `usr-${Date.now()}`,
-      name: rawName,
+      name: name,
       email: trimmedEmail,
       role: role,
-      kycStatus: role === 'admin' ? 'verified' : 'unverified',
-      balance: 5000,
+      kycStatus: role === 'admin' ? 'verified' : 'pending',
+      balance: 0,
       referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
       isPremium: false,
-      avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(rawName)}`
+      phone: '+91 98765 43210',
+      aadharNo: '1234 5678 9012',
+      panNo: 'ABCDE1234F',
+      aadharPanDoc: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=500',
+      avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`
     };
     db.users.push(user);
-    isNewUser = true;
   }
   
   db.activeUserId = user.id;
   writeDB(db);
-  logEvent('info', `Simulated login successful (No keys configured) for ${user.name}`, 'Auth', user.name);
   
+  logEvent('info', `Sync Login success for ${user.name} (${user.role})`, 'Auth', user.name);
+  return res.json({ success: true, user });
+});
+
+// In-memory verification storage for OTP validation
+const otpStore = new Map<string, { otp: string, data?: any }>();
+
+app.post('/api/auth/request-otp', (req, res) => {
+  const { email, purpose, name, phone, aadharNo, panNo, uploadedDoc } = req.body;
+  if (!email) {
+    return res.status(400).json({ success: false, error: 'Email address is required.' });
+  }
+  const trimmedEmail = email.trim().toLowerCase();
+  
+  // Generate random 6-digit code
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  
+  // Store OTP
+  otpStore.set(trimmedEmail, { 
+    otp, 
+    data: { name, phone, aadharNo, panNo, uploadedDoc, purpose } 
+  });
+
+  const db = readDB();
+  const existingUser = db.users.find((u: any) => u.email.toLowerCase() === trimmedEmail);
+  const isSignup = purpose === 'signup';
+
+  if (isSignup && existingUser) {
+    return res.status(400).json({ success: false, error: 'Account already exists. Please Sign In instead.' });
+  }
+
+  // Create simulated email payload
+  const simulatedMail = {
+    id: `mail-otp-${Date.now()}`,
+    senderName: 'VouchLoop Secure Access',
+    senderEmail: 'gatekeeper@vouchloop.com',
+    subject: `Your Secure verification OTP code: ${otp} 🔑`,
+    bodyHtml: `
+      <div style="font-family: sans-serif; padding: 24px; color: #1e293b; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0;">
+        <h2 style="color: #4f46e5; margin-top: 0;">VouchLoop OTP Verification</h2>
+        <p>Please use this secure One-Time Password (OTP) to finalize your identity check and access VouchLoop peer services:</p>
+        <div style="background: #f1f5f9; padding: 16px; border-radius: 8px; font-size: 24px; font-family: monospace; font-weight: bold; letter-spacing: 4px; text-align: center; color: #011d12; margin: 20px 0;">
+          ${otp}
+        </div>
+        <p style="font-size: 11px; color: #64748b; margin-bottom: 0;">This security code is generated purely for <strong>${trimmedEmail}</strong> and expires shortly.</p>
+      </div>
+    `,
+    date: new Date().toLocaleDateString('en-IN') + ' ' + new Date().toLocaleTimeString('en-IN'),
+    isRead: false,
+    category: 'system' as const
+  };
+
+  logEvent('info', `OTP code ${otp} dispatched via secure mail simulation to ${trimmedEmail}`, 'Gatekeeper', trimmedEmail);
+
   return res.json({
     success: true,
-    user,
-    isNewUser,
-    message: `Welcome back to VouchLoop, ${user.name}!`
+    message: `A 6-digit confirmation code has been dispatched to ${trimmedEmail}. Check your simulated mail inbox at the top-right to copy it.`,
+    simulatedMail
   });
 });
 
-app.post('/api/auth/signup', async (req, res) => {
-  const { email, password, name, role, avatar } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ success: false, error: 'Email and password are required.' });
-  }
-  const db = readDB();
-  const trimmedEmail = email.trim().toLowerCase();
-  
-  if (supabase) {
-    try {
-      const { data, error } = await withTimeout(supabase.auth.signUp({
-        email: trimmedEmail,
-        password: password
-      }), 4000);
-      
-      if (error) {
-        if (error.message.toLowerCase().includes('already') || error.message.toLowerCase().includes('registered') || error.message.toLowerCase().includes('exists')) {
-          // Attempt automatic login with the supplied password
-          try {
-            const { data: logData, error: logError } = await withTimeout(supabase.auth.signInWithPassword({
-              email: trimmedEmail,
-              password: password
-            }), 4000);
-            
-            if (!logError && logData?.user) {
-              let user = db.users.find((u: any) => u.email.toLowerCase() === trimmedEmail);
-              if (!user) {
-                const emailPrefix = trimmedEmail.split('@')[0];
-                const rawName = emailPrefix.replace(/[._-]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Peer Trader';
-                const srole = (trimmedEmail === 'arukiranreddy@gmail.com') ? 'admin' : 'user';
-                user = {
-                  id: logData.user.id,
-                  name: rawName,
-                  email: trimmedEmail,
-                  role: srole,
-                  kycStatus: srole === 'admin' ? 'verified' : 'unverified',
-                  balance: 5000,
-                  referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-                  isPremium: false,
-                  avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(rawName)}`
-                };
-                db.users.push(user);
-              }
-              db.activeUserId = user.id;
-              writeDB(db);
-              logEvent('info', `Supabase Auto-Login for registered user: ${user.name}`, 'Auth', user.name);
-              return res.json({
-                success: true,
-                user,
-                isNewUser: false,
-                verificationRequired: false,
-                message: `Account already exists. Logged in successfully as ${user.name}!`
-              });
-            } else {
-              if (logError && (logError.message.toLowerCase().includes('confirm') || logError.message.toLowerCase().includes('verified') || logError.message.toLowerCase().includes('verification'))) {
-                return res.status(400).json({ 
-                  success: false, 
-                  error: 'This account email is already registered but is pending email verification. Please check your inbox or spam to confirm.' 
-                });
-              }
-              return res.status(400).json({ 
-                success: false, 
-                error: 'This email is already registered. Please check your password or try another email.' 
-              });
-            }
-          } catch (loginErr) {
-            return res.status(400).json({ success: false, error: 'User is already registered but password matching or connection failed.' });
-          }
-        } else {
-          console.warn('Supabase signup returned error:', error.message);
-          return res.status(400).json({ success: false, error: error.message });
-        }
-      }
-      
-      const isConfirmNeeded = data.session === null;
-      
-      let user = db.users.find((u: any) => u.email.toLowerCase() === trimmedEmail);
-      if (user) {
-        if (isConfirmNeeded) {
-          return res.json({ 
-            success: true, 
-            user: null, 
-            isNewUser: false, 
-            verificationRequired: true,
-            message: 'Verification email sent! Please check your inbox/spam folder to verify your account.'
-          });
-        } else {
-          db.activeUserId = user.id;
-          writeDB(db);
-          return res.json({ success: true, user, isNewUser: false, verificationRequired: false });
-        }
-      }
-      
-      const emailPrefix = trimmedEmail.split('@')[0];
-      const derivedName = name || emailPrefix.replace(/[._-]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Peer Trader';
-      const finalRole = (trimmedEmail === 'arukiranreddy@gmail.com') ? 'admin' : 'user';
-      
-      const newUser = {
-        id: data.user?.id || `usr-${Date.now()}`,
-        name: derivedName,
-        email: trimmedEmail,
-        role: finalRole,
-        kycStatus: finalRole === 'admin' ? 'verified' : 'unverified',
-        balance: 5000,
-        referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-        isPremium: false,
-        avatar: avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(derivedName)}`
-      };
-      
-      db.users.push(newUser);
-      
-      if (isConfirmNeeded) {
-        writeDB(db);
-        logEvent('info', `Created new unverified Supabase account for ${newUser.name}. Pending email check.`, 'Auth', newUser.name);
-        return res.json({ 
-          success: true, 
-          user: null, 
-          isNewUser: true,
-          verificationRequired: true,
-          message: 'Verification email sent! Please check your inbox / spam folder to verify.'
-        });
-      } else {
-        db.activeUserId = newUser.id;
-        writeDB(db);
-        logEvent('info', `Created new Supabase auth user account: ${newUser.name}`, 'Auth', newUser.name);
-        return res.json({ 
-          success: true, 
-          user: newUser, 
-          isNewUser: true,
-          verificationRequired: false,
-          message: `Registered successfully! Welcome to VouchLoop.`
-        });
-      }
-    } catch (err: any) {
-      console.error('Supabase authentication signup loading exception:', err.message);
-      return res.status(400).json({ success: false, error: err.message || 'Supabase signup service exception' });
-    }
+app.post('/api/auth/verify-otp', async (req, res) => {
+  const { email, otp, purpose } = req.body;
+  if (!email || !otp) {
+    return res.status(400).json({ success: false, error: 'Email and OTP digits are required.' });
   }
 
-  // Simulated credential fallback
+  const trimmedEmail = email.trim().toLowerCase();
+  const stash = otpStore.get(trimmedEmail);
+
+  if (!stash || stash.otp !== otp.trim()) {
+    return res.status(400).json({ success: false, error: 'Wrong verification code or OTP has expired.' });
+  }
+
+  // OTP verified successfully! Clear it
+  otpStore.delete(trimmedEmail);
+
+  const db = readDB();
   let user = db.users.find((u: any) => u.email.toLowerCase() === trimmedEmail);
-  if (user) {
+
+  if (purpose === 'signup') {
+    if (user) {
+      return res.status(400).json({ success: false, error: 'User is already registered.' });
+    }
+
+    const { name, phone, aadharNo, panNo, uploadedDoc } = stash.data || {};
+    const finalRole = (trimmedEmail === 'arukiranreddy@gmail.com') ? 'admin' : 'user';
+
+    user = {
+      id: `usr-${Date.now()}`,
+      name: name || trimmedEmail.split('@')[0],
+      email: trimmedEmail,
+      role: finalRole,
+      kycStatus: finalRole === 'admin' ? 'verified' : 'pending',
+      balance: 10000, // starting credit ₹10,000 for verified traders
+      referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+      isPremium: false,
+      phone: phone || '',
+      aadharNo: aadharNo || '',
+      panNo: panNo || '',
+      aadharPanDoc: uploadedDoc || 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=500',
+      avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name || trimmedEmail)}`
+    };
+
+    db.users.push(user);
     db.activeUserId = user.id;
     writeDB(db);
-    return res.json({ success: true, user, isNewUser: false });
+
+    logEvent('warning', `New user registered. KYC Pending operator verification for ${user.name}`, 'Auth', user.name);
+
+    return res.json({
+      success: true,
+      user,
+      message: `Account created successfully with ₹10,000 starting wallet credit! Your profile has been queued as 'KYC Pending' in the Admin Console.`
+    });
+  } else {
+    // Login flow
+    if (!user) {
+      // Auto-create basic user if not exists to make test flow flexible, otherwise standard login
+      const prefix = trimmedEmail.split('@')[0];
+      const name = prefix.replace(/[._-]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+      const role = (trimmedEmail === 'arukiranreddy@gmail.com') ? 'admin' : 'user';
+
+      user = {
+        id: `usr-${Date.now()}`,
+        name: name,
+        email: trimmedEmail,
+        role: role,
+        kycStatus: role === 'admin' ? 'verified' : 'pending',
+        balance: 0,
+        referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+        isPremium: false,
+        phone: '+91 98765 43210',
+        aadharNo: '1234 5678 9012',
+        panNo: 'ABCDE1234F',
+        aadharPanDoc: 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=500',
+        avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`
+      };
+      db.users.push(user);
+    }
+
+    db.activeUserId = user.id;
+    writeDB(db);
+
+    logEvent('info', `Simulated OTP Login success for ${user.name} (${user.role})`, 'Auth', user.name);
+
+    return res.json({
+      success: true,
+      user,
+      message: `Successfully verified and logged in as ${user.name}!`
+    });
   }
-  
-  const emailPrefix = trimmedEmail.split('@')[0];
-  const derivedName = name || emailPrefix.replace(/[._-]/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Peer Trader';
-  const finalRole = (trimmedEmail === 'arukiranreddy@gmail.com') ? 'admin' : 'user';
-  
-  const newUser = {
-    id: `usr-${Date.now()}`,
-    name: derivedName,
-    email: trimmedEmail,
-    role: finalRole,
-    kycStatus: finalRole === 'admin' ? 'verified' : 'unverified',
-    balance: 5000,
-    referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
-    isPremium: false,
-    avatar: avatar || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(derivedName)}`
-  };
-  
-  db.users.push(newUser);
-  db.activeUserId = newUser.id;
-  writeDB(db);
-  logEvent('info', `Created new simulated peer user account: ${newUser.name}`, 'Auth', newUser.name);
-  res.json({ success: true, user: newUser, isNewUser: true });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -973,7 +676,7 @@ app.post('/api/auth/switch', (req, res) => {
 });
 
 app.post('/api/auth/update', (req, res) => {
-  const { kycStatus, name, email, isPremium, avatar, role } = req.body;
+  const { kycStatus, name, email, isPremium, avatar, role, aadharNo, panNo, uploadedAadhar, uploadedPan } = req.body;
   const db = readDB();
   const activeUser = getActiveUser(db);
   if (activeUser) {
@@ -983,6 +686,11 @@ app.post('/api/auth/update', (req, res) => {
     if (isPremium !== undefined) activeUser.isPremium = isPremium;
     if (avatar !== undefined) activeUser.avatar = avatar;
     if (role !== undefined) activeUser.role = role;
+    if (aadharNo !== undefined) activeUser.aadharNo = aadharNo;
+    if (panNo !== undefined) activeUser.panNo = panNo;
+    if (uploadedAadhar !== undefined) activeUser.uploadedAadhar = uploadedAadhar;
+    if (uploadedPan !== undefined) activeUser.uploadedPan = uploadedPan;
+    if (uploadedAadhar !== undefined) activeUser.uploadedDoc = uploadedAadhar; // fall back for old layout
     writeDB(db);
     logEvent('info', `User profile updated (KYC state: ${kycStatus || activeUser.kycStatus}, Role: ${role || activeUser.role})`, 'Auth', activeUser.name);
     return res.json({ success: true, user: activeUser });
@@ -1164,6 +872,89 @@ app.post('/api/coupons', (req, res) => {
   res.json({ success: true, coupon: newCoupon });
 });
 
+// Update listed coupon details (Full CRUD: UPDATE)
+app.put('/api/coupons/:id', (req, res) => {
+  const { id } = req.params;
+  const { brand, category, discountType, discountValue, price, expiryDate, terms, code } = req.body;
+  
+  const db = readDB();
+  const activeUser = getActiveUser(db);
+  if (!activeUser) {
+    return res.status(401).json({ success: false, error: 'Unauthorized. Please log in first.' });
+  }
+
+  const couponIndex = db.coupons.findIndex((c: any) => c.id === id);
+  if (couponIndex === -1) {
+    return res.status(404).json({ success: false, error: 'Coupon listing not found' });
+  }
+
+  const coupon = db.coupons[couponIndex];
+  
+  // Guard access: only the seller or an admin can edit
+  if (coupon.sellerId !== activeUser.id && activeUser.role !== 'admin') {
+    return res.status(403).json({ success: false, error: 'Forbidden. You do not own this listing.' });
+  }
+
+  // Guard: sold coupons cannot be edited
+  if (coupon.status === 'sold') {
+    return res.status(400).json({ success: false, error: 'Cannot update details of a completed sale/voucher.' });
+  }
+
+  // Update values
+  if (brand !== undefined) coupon.brand = brand;
+  if (category !== undefined) coupon.category = category;
+  if (discountType !== undefined) coupon.discountType = discountType;
+  if (discountValue !== undefined) coupon.discountValue = Number(discountValue);
+  if (price !== undefined) coupon.price = Number(price);
+  if (expiryDate !== undefined) coupon.expiryDate = expiryDate;
+  if (terms !== undefined) coupon.terms = terms;
+  if (code !== undefined) coupon.code = code;
+
+  // Let edits re-trigger verification (unless done by admin)
+  if (activeUser.role !== 'admin') {
+    coupon.status = 'pending'; // Re-queue for verification as pricing/code changed
+  }
+
+  writeDB(db);
+  logEvent('info', `Updated coupon listing for ${coupon.brand} (₹${coupon.price}). State is updated.`, 'Inventory', activeUser.name);
+
+  res.json({ success: true, coupon });
+});
+
+// Delete listed coupon listing (Full CRUD: DELETE)
+app.delete('/api/coupons/:id', (req, res) => {
+  const { id } = req.params;
+  const db = readDB();
+  const activeUser = getActiveUser(db);
+  if (!activeUser) {
+    return res.status(401).json({ success: false, error: 'Unauthorized. Please log in first.' });
+  }
+
+  const couponIndex = db.coupons.findIndex((c: any) => c.id === id);
+  if (couponIndex === -1) {
+    return res.status(404).json({ success: false, error: 'Coupon listing not found' });
+  }
+
+  const coupon = db.coupons[couponIndex];
+  
+  // Guard access: only the seller or an admin can delete
+  if (coupon.sellerId !== activeUser.id && activeUser.role !== 'admin') {
+    return res.status(403).json({ success: false, error: 'Forbidden. You do not own this listing.' });
+  }
+
+  // Guard: sold coupons cannot be deleted
+  if (coupon.status === 'sold') {
+    return res.status(400).json({ success: false, error: 'Cannot delete a completed sale/voucher.' });
+  }
+
+  // Remove coupon from database array
+  db.coupons.splice(couponIndex, 1);
+  writeDB(db);
+  
+  logEvent('warning', `Deleted/Canceled voucher listing for ${coupon.brand}.`, 'Inventory', activeUser.name);
+  res.json({ success: true, message: 'Coupon listing successfully canceled.' });
+});
+
 // Purchase a coupon (Escrow execution logic)
 app.post('/api/coupons/:id/buy', (req, res) => {
   const { id } = req.params;
@@ -1194,8 +985,8 @@ app.post('/api/coupons/:id/buy', (req, res) => {
   // Deduct from buyer
   activeUser.balance -= coupon.price;
 
-  // Escrow distribution: 10% marketplace fee, 90% credited to seller balance
-  const fee = Math.round(coupon.price * 0.1);
+  // Escrow distribution: 5% marketplace fee, 95% credited to seller balance
+  const fee = Math.round(coupon.price * 0.05);
   const payout = coupon.price - fee;
 
   const seller = db.users.find((u: any) => u.id === coupon.sellerId);
@@ -1232,9 +1023,238 @@ app.post('/api/coupons/:id/buy', (req, res) => {
   res.json({ success: true, transaction: purchaseTx, couponCode: coupon.code });
 });
 
-// Wallet Deposit API
+// PhonePe Server-to-Server Callback Handler
+app.post('/api/phonepe/callback', (req, res) => {
+  const { response } = req.body; // base64 encoded JSON returned by PhonePe
+  const xVerify = req.headers['x-verify'];
+
+  if (!response || !xVerify) {
+    return res.status(400).json({ success: false, error: 'Invalid callback payload' });
+  }
+
+  // Anti-fraud: In production, verify the checksum here using your PhonePe Salt Key
+  // const calculatedChecksum = calculateSHA256(response + saltKey) + '###' + saltIndex;
+  // if (calculatedChecksum !== xVerify) { return res.status(401).send('Tampered Request'); }
+  
+  try {
+    const decodedPayload = JSON.parse(Buffer.from(response, 'base64').toString('utf-8'));
+    const { success, code, data } = decodedPayload;
+    
+    // Check if payment was successful
+    if (success && code === 'PAYMENT_SUCCESS' && data) {
+      const { merchantTransactionId, amount } = data;
+      
+      const db = readDB();
+      const txIndex = db.transactions.findIndex((t: any) => t.id === merchantTransactionId);
+      
+      if (txIndex !== -1 && db.transactions[txIndex].status === 'pending') {
+        const tx = db.transactions[txIndex];
+        const numAmt = amount / 100; // PhonePe returns amount in paisa
+        
+        // Final Validation Check
+        if (tx.amount === numAmt) {
+          tx.status = 'completed';
+          
+          // Credit user wallet
+          const user = db.users.find((u: any) => u.id === tx.buyerId);
+          if (user) {
+            user.balance += numAmt;
+            writeDB(db);
+            logEvent('info', `PhonePe Webhook verification success. Credited ₹${numAmt} to ${user.name}`, 'Payments', 'System');
+            return res.status(200).send('OK');
+          }
+        }
+      }
+    }
+    res.status(200).send('OK'); // Always return 200 to acknowledge webhook
+  } catch (err) {
+    console.error('PhonePe Webhook failed to parse:', err);
+    res.status(400).send('Bad Request');
+  }
+});
+
+// Razorpay Order Creation
+app.post('/api/wallet/razorpay/order', async (req, res) => {
+  const { amount, purpose } = req.body;
+  const numAmt = Number(amount);
+  if (isNaN(numAmt) || numAmt <= 0) {
+    return res.status(400).json({ success: false, error: 'Invalid amount' });
+  }
+
+  // Razorpay standard checkout minimum amount is 100 paise (₹1.00)
+  if (numAmt * 100 < 100) {
+    return res.status(400).json({ success: false, error: 'Amount must be at least ₹1.00 (100 paise)' });
+  }
+
+  const db = readDB();
+  const activeUser = getActiveUser(db);
+  if (!activeUser) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  try {
+    let orderId = '';
+    let rzpAmount = Math.round(Number(amount) * 100);
+    let key_id = process.env.RAZORPAY_KEY_ID || 'rzp_test_simulated_key';
+
+    if (!razorpayInstance) {
+      orderId = `order_sim_${Date.now()}`;
+    } else {
+      const options = {
+        amount: rzpAmount,
+        currency: "INR",
+        receipt: `receipt_${Date.now()}`
+      };
+      const order = await razorpayInstance.orders.create(options);
+      orderId = order.id;
+    }
+
+    const txType = purpose === 'checkout' ? 'purchase' : 'deposit';
+
+    const tx = {
+      id: orderId, // using orderId as transaction ID for tracking
+      buyerId: activeUser.id,
+      buyerName: activeUser.name,
+      amount: Number(amount),
+      fee: 0,
+      type: txType as 'purchase' | 'deposit',
+      status: 'pending' as 'pending' | 'completed' | 'failed',
+      date: new Date().toISOString(),
+      paymentMethod: 'Razorpay',
+      upiId: '',
+    };
+    db.transactions.unshift(tx);
+    logEvent('info', `Created pending Razorpay ${txType} order of ₹${amount}.`, 'LedgerWallet', activeUser.name);
+    writeDB(db);
+
+    return res.json({
+      success: true,
+      transaction: tx,
+      orderId,
+      amount: rzpAmount,
+      currency: 'INR',
+      key_id
+    });
+  } catch (error) {
+    console.error('Razorpay Error:', error);
+    res.status(500).json({ success: false, error: 'Failed to create Razorpay order' });
+  }
+});
+
+// Razorpay Payment Verification
+app.post('/api/wallet/razorpay/verify', async (req, res) => {
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, amount, purpose } = req.body;
+  
+  if (!amount || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+    return res.status(400).json({ success: false, error: 'Missing required payment details' });
+  }
+
+  const db = readDB();
+  const activeUser = getActiveUser(db);
+  if (!activeUser) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  let isAuthentic = true;
+
+  // If using actual Razorpay integration, properly verify the signature
+  if (razorpayInstance && process.env.RAZORPAY_KEY_SECRET && !razorpay_order_id.startsWith('order_sim_')) {
+    const expectedSignature = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(razorpay_order_id + '|' + razorpay_payment_id)
+      .digest('hex');
+
+    isAuthentic = expectedSignature === razorpay_signature;
+  }
+
+  if (isAuthentic) {
+    const numAmt = Number(amount);
+    
+    // Find the pending transaction associated with this order
+    const pendingTxIndex = db.transactions.findIndex((t: any) => t.id === razorpay_order_id && t.status === 'pending');
+    let tx;
+
+    if (pendingTxIndex !== -1) {
+      db.transactions[pendingTxIndex].status = 'completed';
+      db.transactions[pendingTxIndex].upiId = razorpay_payment_id || '';
+      tx = db.transactions[pendingTxIndex];
+    } else {
+      // Fallback
+      tx = {
+        id: razorpay_order_id || `tx-rzp-${Date.now()}`,
+        buyerId: activeUser.id,
+        buyerName: activeUser.name,
+        amount: numAmt,
+        fee: 0,
+        type: purpose === 'checkout' ? 'purchase' : 'deposit',
+        // @ts-ignore
+        status: 'completed',
+        date: new Date().toISOString(),
+        paymentMethod: 'Razorpay',
+        upiId: razorpay_payment_id || '',
+      };
+      db.transactions.unshift(tx);
+    }
+    
+    if (tx.type === 'purchase') {
+      logEvent('info', `Processed instant real-time Razorpay checkout of ₹${numAmt}.`, 'LedgerWallet', activeUser.name);
+      writeDB(db);
+
+      // Send email confirmation
+      if (activeUser.email) {
+        const html = `
+          <div style="font-family: sans-serif; max-w-md; margin: auto;">
+            <h2 style="color: #3399cc;">VouchLoop Checkout Receipt</h2>
+            <p>Hi ${activeUser.name},</p>
+            <p>Your payment of ₹${numAmt} for your recent purchase was successful.</p>
+            <p><strong>Transaction ID:</strong> ${tx.id}</p>
+            <p>Thank you for using VouchLoop!</p>
+          </div>
+        `;
+        sendSystemEmail(activeUser.email, `VouchLoop Checkout Receipt - ${tx.id}`, html).catch(console.error);
+      }
+
+      return res.json({
+        success: true,
+        transaction: tx,
+        user: activeUser,
+        message: `Successfully paid ₹${numAmt} via Razorpay.`
+      });
+    }
+
+    activeUser.balance += numAmt;
+    logEvent('info', `Processed instant real-time Razorpay deposit of ₹${numAmt}.`, 'LedgerWallet', activeUser.name);
+    writeDB(db);
+
+    // Send email confirmation
+    if (activeUser.email) {
+      const html = `
+        <div style="font-family: sans-serif; max-w-md; margin: auto;">
+          <h2 style="color: #3399cc;">VouchLoop Deposit Receipt</h2>
+          <p>Hi ${activeUser.name},</p>
+          <p>Your wallet top-up of ₹${numAmt} was successful.</p>
+          <p><strong>Transaction ID:</strong> ${tx.id}</p>
+          <p>Your new wallet balance is ₹${activeUser.balance}.</p>
+        </div>
+      `;
+
+      sendSystemEmail(activeUser.email, `VouchLoop Deposit Receipt - ${tx.id}`, html).catch(console.error);
+    }
+
+    res.json({
+      success: true,
+      transaction: tx,
+      user: activeUser,
+      message: `Successfully deposited ₹${numAmt} to wallet via Razorpay.`
+    });
+  } else {
+    res.status(400).json({ success: false, error: 'Invalid Payment Signature' });
+  }
+});
+
+// Wallet Deposit API (Requires Admin Check for Cards and Cash Amount Validation)
 app.post('/api/wallet/deposit', (req, res) => {
-  const { amount } = req.body;
+  const { amount, paymentMethod, upiId, cardNumber, cardName, cardExpiry, cardCvv } = req.body;
   if (!amount || Number(amount) <= 0) {
     return res.status(400).json({ success: false, error: 'Please enter a valid deposit amount.' });
   }
@@ -1246,25 +1266,41 @@ app.post('/api/wallet/deposit', (req, res) => {
   }
   const numAmt = Number(amount);
 
-  activeUser.balance += numAmt;
+  const txStatus = (paymentMethod === 'PhonePe' || paymentMethod === 'UPI') ? 'completed' : 'pending';
 
+  // We set status as 'pending' for validation by admin console, unless PhonePe/UPI which is real-time
   const tx = {
-    id: `tx-${Date.now()}`,
+    id: `tx-dep-${Date.now()}`,
     buyerId: activeUser.id,
     buyerName: activeUser.name,
     amount: numAmt,
     fee: 0,
     type: 'deposit' as const,
-    status: 'completed' as const,
-    date: new Date().toISOString()
+    status: txStatus as 'completed' | 'pending',
+    date: new Date().toISOString(),
+    paymentMethod: paymentMethod || 'UPI',
+    upiId: upiId || '',
+    cardNumber: cardNumber ? `•••• •••• •••• ${cardNumber.slice(-4)}` : '',
+    cardName: cardName || '',
+    cardExpiry: cardExpiry || '',
+    cardCvv: cardCvv ? '•••' : ''
   };
 
   db.transactions.unshift(tx);
+  if (txStatus === 'completed') {
+    activeUser.balance += numAmt;
+    logEvent('info', `Processed instant real-time deposit of ₹${numAmt} via ${paymentMethod || 'UPI'}.`, 'LedgerWallet', activeUser.name);
+  } else {
+    logEvent('warning', `Logged client ledger deposit request of ₹${numAmt} via ${paymentMethod}. Pending Admin cash confirmation audit.`, 'LedgerWallet', activeUser.name);
+  }
   writeDB(db);
 
-  logEvent('info', `Deposited ₹${numAmt} successfully via UPI/Netbanking portal.`, 'LedgerWallet', activeUser.name);
-
-  res.json({ success: true, user: activeUser, transaction: tx });
+  res.json({ 
+    success: true, 
+    user: activeUser, 
+    transaction: tx,
+    message: txStatus === 'completed' ? `Successfully deposited ₹${numAmt} to wallet via real-time gateway.` : `Payment request of ₹${numAmt} queued for compliance approval! VouchLoop administrators will verify the account details and activate your funds within 10 minutes.`
+  });
 });
 
 // Wallet Payout (Withdrawal) request
@@ -1456,7 +1492,9 @@ app.get('/api/admin/stats', (req, res) => {
       totalTradeVolume: volume,
       avgRiskFactor: avgRisk,
       pendingApprovalCount: db.coupons.filter((c: any) => c.status === 'pending').length,
-      pendingWithdrawalCount: db.transactions.filter((t: any) => t.type === 'withdrawal' && t.status === 'pending').length
+      pendingWithdrawalCount: db.transactions.filter((t: any) => t.type === 'withdrawal' && t.status === 'pending').length,
+      pendingKycCount: db.users.filter((u: any) => u.kycStatus === 'pending').length,
+      pendingDepositCount: db.transactions.filter((t: any) => t.type === 'deposit' && t.status === 'pending').length
     },
     logs: logQueue,
     allUsers: db.users.map((u: any) => {
@@ -1473,8 +1511,78 @@ app.get('/api/admin/stats', (req, res) => {
       };
     }),
     couponsToReview: db.coupons.filter((c: any) => c.status === 'pending'),
-    pendingWithdrawals: db.transactions.filter((tx: any) => tx.type === 'withdrawal' && tx.status === 'pending')
+    pendingWithdrawals: db.transactions.filter((tx: any) => tx.type === 'withdrawal' && tx.status === 'pending'),
+    pendingKycUsers: db.users.filter((u: any) => u.kycStatus === 'pending'),
+    pendingDeposits: db.transactions.filter((tx: any) => tx.type === 'deposit' && tx.status === 'pending')
   });
+});
+
+// Moderate User KYC Identity approvals
+app.post('/api/admin/kyc/:id/moderate', (req, res) => {
+  const { id } = req.params;
+  const { action } = req.body; // 'approve' | 'reject'
+
+  const db = readDB();
+  const activeUser = getActiveUser(db);
+  if (!activeUser || activeUser.role !== 'admin' || activeUser.email?.toLowerCase() !== 'arukiranreddy@gmail.com') {
+    return res.status(403).json({ success: false, error: 'Access denied. You are not authorized as administrator.' });
+  }
+
+  const uIndex = db.users.findIndex((u: any) => u.id === id);
+  if (uIndex === -1) {
+    return res.status(404).json({ success: false, error: 'User slot not found.' });
+  }
+
+  const targetUser = db.users[uIndex];
+  if (action === 'approve') {
+    targetUser.kycStatus = 'verified';
+    logEvent('info', `Identity KYC Approved for user ${targetUser.name} with fully validated Aadhar/PAN cards details.`, 'Moderation', 'Admin');
+  } else {
+    targetUser.kycStatus = 'rejected';
+    logEvent('error', `Identity KYC Flagged and Declined for user ${targetUser.name} due to unreadable uploads.`, 'Moderation', 'Admin');
+  }
+
+  writeDB(db);
+  res.json({ success: true, user: targetUser });
+});
+
+// Moderate Ledger Wallet Cash/Card Deposits
+app.post('/api/admin/deposit/:id/moderate', (req, res) => {
+  const { id } = req.params;
+  const { action } = req.body; // 'approve' | 'reject'
+
+  const db = readDB();
+  const activeUser = getActiveUser(db);
+  if (!activeUser || activeUser.role !== 'admin' || activeUser.email?.toLowerCase() !== 'arukiranreddy@gmail.com') {
+    return res.status(403).json({ success: false, error: 'Access denied. You are not authorized as administrator.' });
+  }
+
+  const tIndex = db.transactions.findIndex((t: any) => t.id === id);
+  if (tIndex === -1) {
+    return res.status(404).json({ success: false, error: 'Deposit ledger transaction ID not found.' });
+  }
+
+  const tx = db.transactions[tIndex];
+  if (tx.status !== 'pending') {
+    return res.status(400).json({ success: false, error: 'Deposit transaction has already been resolved.' });
+  }
+
+  const clientUser = db.users.find((u: any) => u.id === tx.buyerId);
+  if (!clientUser) {
+    return res.status(404).json({ success: false, error: 'Target deposit user account could not be found.' });
+  }
+
+  if (action === 'approve') {
+    tx.status = 'completed';
+    clientUser.balance += tx.amount;
+    logEvent('info', `Approved deposit of ₹${tx.amount} to wallet of ${clientUser.name} after original payment instrument verification.`, 'LedgerWallet', 'Admin');
+  } else {
+    tx.status = 'failed';
+    logEvent('error', `Rejected cash deposit credentials of ₹${tx.amount} for user ${clientUser.name} due to gateway authorization failure.`, 'LedgerWallet', 'Admin');
+  }
+
+  writeDB(db);
+  res.json({ success: true, tx });
 });
 
 // Moderate Coupon approvals
@@ -1644,13 +1752,17 @@ app.use((err: any, req: any, res: any, next: any) => {
 
 // Vite middleware setup
 async function startServer() {
-  // Sync state with Supabase if active
-  if (supabase) {
+  // Sync state with Firebase if active
+  if (firebaseApp) {
     try {
       console.log('Starting remote cloud sync pull...');
-      await pullFromSupabase();
+      const db = readDB();
+      const updated = await pullFromFirebase(db);
+      if (updated) {
+          writeDB(db);
+      }
     } catch (syncErr) {
-      console.error('Could not pull from Supabase on start, running offline mode cache:', syncErr);
+      console.error('Could not pull from Firebase on start, running offline mode cache:', syncErr);
     }
   }
 

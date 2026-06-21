@@ -1,21 +1,22 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-heading: "Outfit", sans-serif;
   --font-sans: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
 }
 
 body {
   font-family: var(--font-sans);
-  background-color: #fcfdfe;
+  background-color: #f6f8fb;
   color: #0f172a;
   -webkit-font-smoothing: antialiased;
 }
 
 h1, h2, h3, h4, h5, h6, .font-heading {
   font-family: var(--font-heading) !important;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
 }
 
 /* Custom scrollbar utility for clean minimalist panels */
@@ -26,4 +27,35 @@ h1, h2, h3, h4, h5, h6, .font-heading {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* Premium Custom VouchLoop Glow & Borders */
+.premium-glow-indigo {
+  box-shadow: 0 0 40px -10px rgba(79, 70, 229, 0.12);
+}
+
+.premium-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(241, 245, 249, 0.7);
+  box-shadow: 0 10px 30px -10px rgba(15, 23, 42, 0.04);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.premium-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 40px -15px rgba(15, 23, 42, 0.08);
+  border-color: rgba(79, 70, 229, 0.15);
+}
+
+.premium-card-dark {
+  background: #0f172a;
+  box-shadow: 0 10px 40px -15px rgba(0, 0, 0, 0.2);
+}
+
+.premium-glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(24px);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+}
+
 

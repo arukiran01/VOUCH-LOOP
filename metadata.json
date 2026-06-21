@@ -1,6 +1,6 @@
 {
-  "name": "VouchLoop Gift Cards",
-  "description": "VouchLoop is India's leading cashback and peer-to-peer gift cards marketplace. Buy brand vouchers with heavy discounts, sell unused gift cards instantly, and execute secure wallet-to-wallet transfers with zero risk.",
+  "name": "Zingo Cashback App",
+  "description": "Zingo is your ultimate cashback, coupons, and gift cards app. Designed as a Zingoy clone with a clean, seamless UI to browse top store offers, buy reduced price gift cards, and save big on everyday shopping.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
