@@ -444,6 +444,52 @@ function logEvent(level: 'info' | 'warning' | 'error', event: string, module: st
   writeDB(db);
 }
 
+// Lightweight in-memory rate limiter for backend endpoints
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+const rateLimiter = (options: { windowMs: number; max: number; message: string }) => {
+  return (req: any, res: any, next: any) => {
+    const ip = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+    const key = `${req.path}:${ip}`;
+    const now = Date.now();
+    
+    let record = rateLimitMap.get(key);
+    if (!record || now > record.resetTime) {
+      record = {
+        count: 0,
+        resetTime: now + options.windowMs,
+      };
+    }
+    
+    record.count++;
+    rateLimitMap.set(key, record);
+    
+    res.setHeader('X-RateLimit-Limit', options.max);
+    res.setHeader('X-RateLimit-Remaining', Math.max(0, options.max - record.count));
+    
+    if (record.count > options.max) {
+      logEvent('warning', `Rate limit triggered on ${req.path} by ${ip}`, 'Security', 'system');
+      return res.status(429).json({
+        success: false,
+        error: options.message || 'Too many requests. Please try again after some time.'
+      });
+    }
+    next();
+  };
+};
+
+const authRateLimit = rateLimiter({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // Max 10 requests per minute
+  message: 'Too many authentication attempts. Please wait 1 minute before trying again.'
+});
+
+const paymentRateLimit = rateLimiter({
+  windowMs: 60 * 1000,
+  max: 15, // Max 15 creation or verify trials per minute
+  message: 'Payment requests throttled. Please slow down and try again.'
+});
+
 // --- API Router Endpoints ---
 
 function getActiveUser(db: any) {
@@ -463,7 +509,7 @@ app.get('/api/auth/session', (req, res) => {
   res.json({ success: true, user: activeUser });
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', authRateLimit, (req, res) => {
   const { email } = req.body;
   if (!email) {
     return res.status(400).json({ success: false, error: 'Email is required.' });
@@ -505,7 +551,7 @@ app.post('/api/auth/login', (req, res) => {
 // In-memory verification storage for OTP validation
 const otpStore = new Map<string, { otp: string, data?: any }>();
 
-app.post('/api/auth/request-otp', (req, res) => {
+app.post('/api/auth/request-otp', authRateLimit, (req, res) => {
   const { email, purpose, name, phone, aadharNo, panNo, uploadedDoc } = req.body;
   if (!email) {
     return res.status(400).json({ success: false, error: 'Email address is required.' });
@@ -559,7 +605,7 @@ app.post('/api/auth/request-otp', (req, res) => {
   });
 });
 
-app.post('/api/auth/verify-otp', async (req, res) => {
+app.post('/api/auth/verify-otp', authRateLimit, async (req, res) => {
   const { email, otp, purpose } = req.body;
   if (!email || !otp) {
     return res.status(400).json({ success: false, error: 'Email and OTP digits are required.' });
@@ -1074,7 +1120,7 @@ app.post('/api/phonepe/callback', (req, res) => {
 });
 
 // Razorpay Order Creation
-app.post('/api/wallet/razorpay/order', async (req, res) => {
+app.post('/api/wallet/razorpay/order', paymentRateLimit, async (req, res) => {
   const { amount, purpose } = req.body;
   const numAmt = Number(amount);
   if (isNaN(numAmt) || numAmt <= 0) {
@@ -1142,7 +1188,7 @@ app.post('/api/wallet/razorpay/order', async (req, res) => {
 });
 
 // Razorpay Payment Verification
-app.post('/api/wallet/razorpay/verify', async (req, res) => {
+app.post('/api/wallet/razorpay/verify', paymentRateLimit, async (req, res) => {
   const { razorpay_order_id, razorpay_payment_id, razorpay_signature, amount, purpose } = req.body;
   
   if (!amount || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {

@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["id"]
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Discount coupon or gift card data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" }
+      },
+      "required": ["id"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Wallet and coupon transactions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" }
+      },
+      "required": ["id"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Store card reviews",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" }
+      },
+      "required": ["id"]
+    },
+    "SystemLog": {
+      "title": "SystemLog",
+      "description": "Database system log entries",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" }
+      },
+      "required": ["id"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles collection"
+    },
+    "coupons/{couponId}": {
+      "schema": "Coupon",
+      "description": "Coupons collection"
+    },
+    "transactions/{txId}": {
+      "schema": "Transaction",
+      "description": "Transactions collection"
+    },
+    "reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Reviews collection"
+    },
+    "systemLogs/{logId}": {
+      "schema": "SystemLog",
+      "description": "SystemLogs collection"
+    }
+  }
+}

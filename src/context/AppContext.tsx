@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, ReactNode, useEffect } from
 import { User, Voucher, Transaction, AppNotification } from '../types';
 import { VOUCHERS } from '../data';
 import { useToast } from './ToastContext';
+import { db } from '../lib/firebase';
+import { collection, doc, onSnapshot } from 'firebase/firestore';
 
 interface CartItem {
   id: string; // unique ID for cart item
@@ -40,6 +42,7 @@ interface AppContextType {
   activeCategoryFilter: string;
   setActiveCategoryFilter: (category: string) => void;
   validateRouteAccess: (options: { requireKyc?: boolean; requireAdmin?: boolean }) => { allowed: boolean; redirectTo?: string };
+  syncSession: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -68,6 +71,61 @@ export function AppProvider({ children }: { children: ReactNode }) {
       })
       .catch(err => console.error("Session sync failed:", err));
   }, []);
+
+  useEffect(() => {
+    // 1. Real-time Coupons synchronization
+    const unsubscribeCoupons = onSnapshot(collection(db, 'coupons'), (snapshot) => {
+      const list: Voucher[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as Voucher);
+      });
+      if (list.length > 0) {
+        setVouchers(list);
+      }
+    }, (error) => {
+      console.warn('Real-time database offline, falling back gracefully:', error);
+    });
+
+    return () => {
+      unsubscribeCoupons();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    // 2. Real-time current user document subscription
+    const unsubscribeUser = onSnapshot(doc(db, 'users', user.id), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setUser(prev => prev ? { ...prev, ...data } : (data as User));
+        if (typeof data.balance === 'number') {
+          setWalletBalance(data.balance);
+        }
+      }
+    }, (error) => {
+       console.warn('User listener subscription error:', error);
+    });
+
+    // 3. Real-time user transactions sync
+    const unsubscribeTx = onSnapshot(collection(db, 'transactions'), (snapshot) => {
+      const list: Transaction[] = [];
+      snapshot.forEach((docSnap) => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as Transaction);
+      });
+      // Filter & Sort
+      const sorted = list
+        .sort((a, b) => b.id.localeCompare(a.id) || new Date(b.date).getTime() - new Date(a.date).getTime());
+      setTransactions(sorted);
+    }, (error) => {
+      console.warn('Transactions subscription error:', error);
+    });
+
+    return () => {
+      unsubscribeUser();
+      unsubscribeTx();
+    };
+  }, [user?.id]);
 
   const login = async (email: string) => {
     try {
@@ -194,6 +252,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { allowed: true };
   };
 
+  const syncSession = async () => {
+    try {
+      const res = await fetch('/api/auth/session');
+      const data = await res.json();
+      if (data.success && data.user) {
+        setUser(data.user);
+        setWalletBalance(data.user.balance || 0);
+      }
+    } catch (err) {
+      console.error("Session sync failed:", err);
+    }
+  };
+
   return (
     <AppContext.Provider value={{ 
       user, login, logout, updateKycStatus, walletBalance, addFunds, deductFunds, 
@@ -201,7 +272,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       myPurchasedVouchers, addPurchasedVouchers, transactions, addTransaction,
       notifications, addNotification, markNotificationRead, markAllNotificationsRead, clearNotifications,
       vouchers, addVoucher, updateVoucherStatus,
-      activeCategoryFilter, setActiveCategoryFilter, validateRouteAccess
+      activeCategoryFilter, setActiveCategoryFilter, validateRouteAccess,
+      syncSession
     }}>
       {children}
     </AppContext.Provider>
