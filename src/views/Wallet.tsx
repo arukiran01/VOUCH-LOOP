@@ -6,6 +6,7 @@ import { Transaction } from '../types';
 import { RazorpayButton } from '../components/RazorpayButton';
 import useSWR, { mutate } from 'swr';
 import { TransactionHistory } from '../components/TransactionHistory';
+import { useQuery } from '@tanstack/react-query';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
@@ -21,6 +22,27 @@ export default function Wallet() {
   const [loading, setLoading] = useState(true);
   const [isPolling, setIsPolling] = useState(false);
   const pollIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
+
+  // Implement a TanStack Query hook to fetch current user balance from Firestore, configured with short polling
+  const { data: balanceData } = useQuery({
+    queryKey: ['walletBalance', user?.id],
+    queryFn: async () => {
+      const res = await fetch('/api/wallet/balance');
+      if (!res.ok) throw new Error('Failed to retrieve real-time balance');
+      const data = await res.json();
+      return data.success ? data.balance : 0;
+    },
+    enabled: !!user,
+    refetchInterval: 3000, // Short polling interval of 3 seconds to keep UI synchronized with Firestore
+  });
+
+  const liveWalletBalance = typeof balanceData === 'number' ? balanceData : walletBalance;
+
+  React.useEffect(() => {
+    if (typeof balanceData === 'number' && balanceData !== walletBalance) {
+      syncSession();
+    }
+  }, [balanceData, walletBalance, syncSession]);
 
   // Use SWR to query and automatically synchronize wallet ledger state
   const { data: walletData, mutate: refetchWallet } = useSWR('/api/wallet/history', fetcher, {
@@ -145,12 +167,12 @@ export default function Wallet() {
   };
 
   const handleWithdraw = () => {
-    const amount = parseFloat(withdrawAmount) || walletBalance;
+    const amount = parseFloat(withdrawAmount) || liveWalletBalance;
     if (amount < 250) {
       alert('Minimum withdrawal amount is ₹250');
       return;
     }
-    if (amount > walletBalance) {
+    if (amount > liveWalletBalance) {
       alert('Insufficient available balance for withdrawal');
       return;
     }
@@ -197,16 +219,16 @@ export default function Wallet() {
         <div className="md:col-span-1 space-y-4">
           <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 text-white shadow-xl">
             <p className="text-gray-400 text-sm font-medium mb-1">Total Available Balance</p>
-            <h2 className="text-4xl font-bold mb-4">₹{walletBalance.toFixed(2)}</h2>
+            <h2 className="text-4xl font-bold mb-4">₹{liveWalletBalance.toFixed(2)}</h2>
             
             <div className="grid grid-cols-2 gap-2 mb-6 text-sm">
                <div className="bg-white/10 p-2 rounded">
                  <p className="text-gray-400 text-xs">Vouchers Sold</p>
-                 <p className="font-semibold">₹{(walletBalance * 0.6).toFixed(2)}</p>
+                 <p className="font-semibold">₹{(liveWalletBalance * 0.6).toFixed(2)}</p>
                </div>
                <div className="bg-white/10 p-2 rounded">
                  <p className="text-gray-400 text-xs">Referral Fees</p>
-                 <p className="font-semibold">₹{(walletBalance * 0.4).toFixed(2)}</p>
+                 <p className="font-semibold">₹{(liveWalletBalance * 0.4).toFixed(2)}</p>
                </div>
             </div>
 
@@ -234,7 +256,7 @@ export default function Wallet() {
                 </button>
                 <button 
                   onClick={() => { setShowWithdraw(true); setShowPhonePe(false); }}
-                  disabled={walletBalance < 250 || user.kycStatus === 'unverified'}
+                  disabled={liveWalletBalance < 250 || user.kycStatus === 'unverified'}
                   className="w-full bg-transparent border border-gray-500 hover:border-white disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center text-sm"
                 >
                   Withdraw <ArrowUpRight className="w-4 h-4 ml-1" />
@@ -247,7 +269,7 @@ export default function Wallet() {
                    <Link to="/kyc" className="underline hover:text-white transition">Verify Now to Withdraw</Link>
                  </div>
               )}
-              {walletBalance < 250 && user.kycStatus !== 'unverified' && <p className="text-xs text-gray-400 text-center mt-2">Min. withdrawal: ₹250</p>}
+              {liveWalletBalance < 250 && user.kycStatus !== 'unverified' && <p className="text-xs text-gray-400 text-center mt-2">Min. withdrawal: ₹250</p>}
             </div>
           </div>
         </div>
@@ -315,7 +337,7 @@ export default function Wallet() {
                       value={withdrawAmount} 
                       onChange={(e) => setWithdrawAmount(e.target.value)} 
                       className="w-full border-gray-300 rounded-lg pl-8 p-2 border focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none" 
-                      placeholder={`Enter amount (max ₹${walletBalance})`} 
+                      placeholder={`Enter amount (max ₹${liveWalletBalance})`} 
                     />
                   </div>
                 </div>

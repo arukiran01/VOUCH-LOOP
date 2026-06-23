@@ -27,9 +27,13 @@ export default function Auth() {
       const from = location.state?.from || '/';
       navigate(from, { replace: true });
     } catch (error: any) {
+      let errorDesc = error.message;
+      if (error.code === 'auth/unauthorized-domain' || (error.message && error.message.includes('unauthorized-domain'))) {
+        errorDesc = `This domain is not authorized in Firebase! Fix: Go to Firebase Console > Authentication > Settings > Authorized Domains, and add your Vercel/preview domain (${window.location.host}).`;
+      }
       addNotification({
         title: "Authentication Failed",
-        desc: error.message,
+        desc: errorDesc,
         type: "error"
       });
     }

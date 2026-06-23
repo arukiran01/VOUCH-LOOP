@@ -90,7 +90,7 @@ if (!fs.existsSync(path.dirname(DB_FILE))) {
 // Pre-seeded database state matching Indian Rupee (INR - ₹) marketplace values
 const INITIAL_DATABASE = {
   users: [
-    { id: 'usr-1', name: 'Aruna Kiran', email: 'arukiranreddy@gmail.com', role: 'admin', kycStatus: 'verified', balance: 0, referralCode: 'COUPONX99', isPremium: true },
+    { id: 'usr-1', name: 'Aruna Kiran', email: 'arukiranreddy@gmail.com', role: 'admin', kycStatus: 'verified', balance: 5000, referralCode: 'COUPONX99', isPremium: true },
     { id: 'usr-2', name: 'Rohan Sharma', email: 'rohan@example.in', role: 'user', kycStatus: 'verified', balance: 2450, referralCode: 'ROHAN100', isPremium: false },
     { id: 'usr-3', name: 'Priya Patel', email: 'priya@patel.co.in', role: 'user', kycStatus: 'pending', balance: 750, referralCode: 'PRIYA50', isPremium: true },
     { id: 'usr-4', name: 'Affiliate Partner', email: 'retail@coupons.in', role: 'user', kycStatus: 'verified', balance: 18400, referralCode: 'INDIA_DISCOUNT', isPremium: false }
@@ -380,6 +380,120 @@ const INITIAL_DATABASE = {
       fraudScore: 2,
       recommendedPrice: 20,
       isFeatured: true
+    },
+    {
+      id: 'cpn-16',
+      brand: 'Uber Premier Rider',
+      category: 'Travel',
+      code: 'UBERPREMIER-300',
+      description: 'Flat ₹300 off on your next 3 premium Uber ride bookings.',
+      discountType: 'flat',
+      discountValue: 100,
+      expiryDate: '2026-10-15',
+      terms: 'Valid on Premier / Intercity rides. Max discount ₹100 per trip.',
+      price: 40,
+      sellerId: 'usr-2',
+      sellerName: 'Rohan Sharma',
+      status: 'active',
+      ocrExtracted: true,
+      fraudScore: 1,
+      recommendedPrice: 42,
+      isFeatured: true
+    },
+    {
+      id: 'cpn-17',
+      brand: 'Starbucks Coffee Indulgence',
+      category: 'Food',
+      code: 'SBUX-BOGO-FREE',
+      description: 'Buy 1 Beverage and get 1 free on winter special handcrafted drinks.',
+      discountType: 'percentage',
+      discountValue: 100,
+      expiryDate: '2026-09-30',
+      terms: 'Valid on Grande or Venti size drinks across any Indian outlet.',
+      price: 15,
+      sellerId: 'usr-4',
+      sellerName: 'Affiliate Partner',
+      status: 'active',
+      ocrExtracted: false,
+      fraudScore: 2,
+      recommendedPrice: 18,
+      isFeatured: false
+    },
+    {
+      id: 'cpn-18',
+      brand: 'MakeMyTrip domestic Fly',
+      category: 'Travel',
+      code: 'MMTDOM-1500-OFF',
+      description: 'Flat ₹1,500 instant discount on any domestic flight booking.',
+      discountType: 'flat',
+      discountValue: 150,
+      expiryDate: '2026-11-20',
+      terms: 'Minimum booking value ₹5,000. Valid on Air India, IndiGo, or Akasa Air.',
+      price: 120,
+      sellerId: 'usr-3',
+      sellerName: 'Priya Patel',
+      status: 'active',
+      ocrExtracted: true,
+      fraudScore: 3,
+      recommendedPrice: 130,
+      isFeatured: true
+    },
+    {
+      id: 'cpn-19',
+      brand: 'Spotify Premium Duo',
+      category: 'Entertainment',
+      code: 'SPOTIFYDUO-2M',
+      description: '2-Months complimentary access to Spotify Duo premium tier.',
+      discountType: 'flat',
+      discountValue: 30,
+      expiryDate: '2026-08-31',
+      terms: 'Valid for users who have not previously trial-subscribed.',
+      price: 25,
+      sellerId: 'usr-2',
+      sellerName: 'Rohan Sharma',
+      status: 'active',
+      ocrExtracted: false,
+      fraudScore: 5,
+      recommendedPrice: 28,
+      isFeatured: false
+    },
+    {
+      id: 'cpn-20',
+      brand: 'Flipkart Electronics',
+      category: 'Shopping',
+      code: 'FLIPKART-500-GIFT',
+      description: 'Flat ₹500 discount voucher on direct checkout shopping.',
+      discountType: 'flat',
+      discountValue: 50,
+      expiryDate: '2026-12-25',
+      terms: 'Applicable on Electronics and Mobile accessories only.',
+      price: 75,
+      sellerId: 'usr-4',
+      sellerName: 'Affiliate Partner',
+      status: 'active',
+      ocrExtracted: true,
+      fraudScore: 2,
+      recommendedPrice: 80,
+      isFeatured: true
+    },
+    {
+      id: 'cpn-21',
+      brand: 'Dominos Gourmet Feast',
+      category: 'Food',
+      code: 'DOMINOS-GIFT-450',
+      description: 'Flat ₹450 off on ordering any medium/large size gourmet pizza.',
+      discountType: 'flat',
+      discountValue: 45,
+      expiryDate: '2026-11-30',
+      terms: 'Minimum cart value ₹800. Valid on home delivery online orders.',
+      price: 45,
+      sellerId: 'usr-3',
+      sellerName: 'Priya Patel',
+      status: 'active',
+      ocrExtracted: true,
+      fraudScore: 1,
+      recommendedPrice: 48,
+      isFeatured: true
     }
   ],
   transactions: [
@@ -405,7 +519,36 @@ function readDB() {
       return INITIAL_DATABASE;
     }
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    
+    // Dynamic migration to ensure all newly preloaded coupons are present
+    let mutated = false;
+    if (!parsed.coupons) {
+      parsed.coupons = [];
+      mutated = true;
+    }
+    
+    for (const initCpn of INITIAL_DATABASE.coupons) {
+      if (!parsed.coupons.find((c: any) => c.id === initCpn.id)) {
+        parsed.coupons.push(initCpn);
+        mutated = true;
+      }
+    }
+
+    // Ensure Aruna Kiran admin has starting balance of 5000 if currently 0
+    if (parsed.users && Array.isArray(parsed.users)) {
+      const adminUser = parsed.users.find((u: any) => u.email === 'arukiranreddy@gmail.com');
+      if (adminUser && adminUser.balance === 0) {
+        adminUser.balance = 5000;
+        mutated = true;
+      }
+    }
+    
+    if (mutated) {
+      fs.writeFileSync(DB_FILE, JSON.stringify(parsed, null, 2), 'utf-8');
+    }
+    
+    return parsed;
   } catch (err) {
     console.error('Error reading json db, using memory', err);
     return INITIAL_DATABASE;
@@ -490,6 +633,12 @@ const paymentRateLimit = rateLimiter({
   message: 'Payment requests throttled. Please slow down and try again.'
 });
 
+const sensitiveOpsRateLimit = rateLimiter({
+  windowMs: 30 * 1000, // 30 seconds
+  max: 3,              // Max 3 sensitive operations per 30 seconds
+  message: 'Safety Threshold active! Please restrict the rate of your transactions or balance updates in order to help prevent platform abuse.'
+});
+
 // --- API Router Endpoints ---
 
 function getActiveUser(db: any) {
@@ -529,7 +678,7 @@ app.post('/api/auth/login', authRateLimit, (req, res) => {
       email: trimmedEmail,
       role: role,
       kycStatus: role === 'admin' ? 'verified' : 'pending',
-      balance: 0,
+      balance: 5000,
       referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
       isPremium: false,
       phone: '+91 98765 43210',
@@ -638,7 +787,7 @@ app.post('/api/auth/verify-otp', authRateLimit, async (req, res) => {
       email: trimmedEmail,
       role: finalRole,
       kycStatus: finalRole === 'admin' ? 'verified' : 'pending',
-      balance: 10000, // starting credit ₹10,000 for verified traders
+      balance: 5000, // starting credit ₹5,000 for verified traders
       referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
       isPremium: false,
       phone: phone || '',
@@ -657,7 +806,7 @@ app.post('/api/auth/verify-otp', authRateLimit, async (req, res) => {
     return res.json({
       success: true,
       user,
-      message: `Account created successfully with ₹10,000 starting wallet credit! Your profile has been queued as 'KYC Pending' in the Admin Console.`
+      message: `Account created successfully with ₹5,000 starting wallet credit! Your profile has been queued as 'KYC Pending' in the Admin Console.`
     });
   } else {
     // Login flow
@@ -673,7 +822,7 @@ app.post('/api/auth/verify-otp', authRateLimit, async (req, res) => {
         email: trimmedEmail,
         role: role,
         kycStatus: role === 'admin' ? 'verified' : 'pending',
-        balance: 0,
+        balance: 5000,
         referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
         isPremium: false,
         phone: '+91 98765 43210',
@@ -1002,7 +1151,7 @@ app.delete('/api/coupons/:id', (req, res) => {
 });
 
 // Purchase a coupon (Escrow execution logic)
-app.post('/api/coupons/:id/buy', (req, res) => {
+app.post('/api/coupons/:id/buy', sensitiveOpsRateLimit, (req, res) => {
   const { id } = req.params;
   const db = readDB();
   const activeUser = getActiveUser(db);
@@ -1299,7 +1448,7 @@ app.post('/api/wallet/razorpay/verify', paymentRateLimit, async (req, res) => {
 });
 
 // Wallet Deposit API (Requires Admin Check for Cards and Cash Amount Validation)
-app.post('/api/wallet/deposit', (req, res) => {
+app.post('/api/wallet/deposit', sensitiveOpsRateLimit, (req, res) => {
   const { amount, paymentMethod, upiId, cardNumber, cardName, cardExpiry, cardCvv } = req.body;
   if (!amount || Number(amount) <= 0) {
     return res.status(400).json({ success: false, error: 'Please enter a valid deposit amount.' });
@@ -1350,7 +1499,7 @@ app.post('/api/wallet/deposit', (req, res) => {
 });
 
 // Wallet Payout (Withdrawal) request
-app.post('/api/wallet/withdraw', (req, res) => {
+app.post('/api/wallet/withdraw', sensitiveOpsRateLimit, (req, res) => {
   const { amount, upiId, bankAccount } = req.body;
   if (!amount || Number(amount) <= 0) {
     return res.status(400).json({ success: false, error: 'Please enter a valid withdrawal amount.' });
@@ -1389,7 +1538,7 @@ app.post('/api/wallet/withdraw', (req, res) => {
 });
 
 // Direct Wallet P2P Transfer API
-app.post('/api/wallet/transfer', (req, res) => {
+app.post('/api/wallet/transfer', sensitiveOpsRateLimit, (req, res) => {
   const { recipientEmail, amount } = req.body;
   
   if (!recipientEmail || !amount || Number(amount) <= 0) {
@@ -1441,6 +1590,38 @@ app.post('/api/wallet/transfer', (req, res) => {
 
   // Return success response with updated active sender profile
   res.json({ success: true, user: activeUser, transaction: tx, recipientName: recipient.name });
+});
+
+// Get user wallet real-time balance directly from Firestore
+app.get('/api/wallet/balance', async (req, res) => {
+  const db = readDB();
+  const activeUser = getActiveUser(db);
+  if (!activeUser) {
+    return res.status(401).json({ success: false, error: 'Unauthorized. Please login first.' });
+  }
+
+  let balance = activeUser.balance || 0;
+
+  if (firebaseApp) {
+    try {
+      const userDoc = await firebaseApp.collection('users').doc(activeUser.id).get();
+      if (userDoc.exists) {
+        const userData = userDoc.data();
+        if (userData && typeof userData.balance === 'number') {
+          balance = userData.balance;
+          // Sync back to local json storage to avoid deviations
+          if (activeUser.balance !== balance) {
+            activeUser.balance = balance;
+            writeDB(db);
+          }
+        }
+      }
+    } catch (firestoreErr) {
+      console.error('Failed to retrieve user balance from Firestore, defaulting to offline cache:', firestoreErr);
+    }
+  }
+
+  res.json({ success: true, balance });
 });
 
 // Get user transaction logs
