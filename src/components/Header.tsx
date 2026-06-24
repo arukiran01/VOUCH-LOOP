@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, User, Wallet, Gift, Heart, Menu, ShoppingCart, Share2, Bell, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { Search, User, Wallet, Gift, Heart, Menu, ShoppingCart, Share2, Bell, ShieldCheck, CheckCircle2, Clock } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 
@@ -125,14 +125,28 @@ export default function Header() {
           </Link>
 
           {user ? (
-            <div className="relative group hidden md:flex items-center gap-1 hover:text-teal-600 text-sm font-medium cursor-pointer">
-              <User className="w-5 h-5" />
-              <span className="flex items-center gap-1">
-                {user.name} 
-                {user.kycStatus === 'verified' && <span className="w-2 h-2 rounded-full bg-green-500" title="Verified"></span>}
-                {user.kycStatus === 'pending' && <span className="w-2 h-2 rounded-full bg-yellow-500" title="Pending"></span>}
-                {user.kycStatus === 'unverified' && <span className="w-2 h-2 rounded-full bg-red-400" title="Unverified"></span>}
-              </span>
+            <div className="relative group hidden md:flex items-center gap-2 hover:text-teal-600 text-sm font-medium cursor-pointer">
+              <User className="w-5 h-5 text-gray-500 group-hover:text-teal-600" />
+              <div className="flex flex-col items-start leading-tight">
+                <span className="font-semibold text-gray-800 group-hover:text-teal-600">{user.name}</span>
+                <span className="flex items-center gap-1 mt-0.5">
+                  {user.kycStatus === 'verified' && (
+                    <span className="inline-flex items-center gap-0.5 bg-green-100 text-green-800 text-[10px] px-1.5 py-0.2 rounded-md font-bold tracking-tight border border-green-200">
+                      <ShieldCheck className="w-2.5 h-2.5" /> KYC Verified
+                    </span>
+                  )}
+                  {user.kycStatus === 'pending' && (
+                    <span className="inline-flex items-center gap-0.5 bg-yellow-100 text-yellow-800 text-[10px] px-1.5 py-0.2 rounded-md font-bold tracking-tight border border-yellow-200">
+                      <Clock className="w-2.5 h-2.5 animate-spin" /> KYC Pending
+                    </span>
+                  )}
+                  {(user.kycStatus === 'unverified' || !user.kycStatus) && (
+                    <span className="inline-flex items-center gap-0.5 bg-red-100 text-red-800 text-[10px] px-1.5 py-0.2 rounded-md font-bold tracking-tight border border-red-200">
+                      <ShieldCheck className="w-2.5 h-2.5" /> KYC Unverified
+                    </span>
+                  )}
+                </span>
+              </div>
               <div className="absolute top-full right-0 w-40 bg-white shadow-lg border border-gray-100 rounded-md py-2 mt-2 hidden group-hover:block z-50">
                 {user.role === 'admin' && (
                   <Link to="/admin" className="block w-full text-left px-4 py-2 text-sm text-teal-700 bg-teal-50 hover:bg-teal-100 font-bold">

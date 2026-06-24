@@ -7,6 +7,7 @@ import { initFirebase, syncToFirebase, pullFromFirebase } from './firebase-sync'
 import nodemailer from 'nodemailer';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
 
 dotenv.config();
 
@@ -621,22 +622,28 @@ const rateLimiter = (options: { windowMs: number; max: number; message: string }
   };
 };
 
-const authRateLimit = rateLimiter({
+const authRateLimit = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 10, // Max 10 requests per minute
-  message: 'Too many authentication attempts. Please wait 1 minute before trying again.'
+  limit: 10, // Max 10 requests per minute
+  legacyHeaders: false,
+  standardHeaders: 'draft-7',
+  message: { success: false, error: 'Too many authentication attempts. Please wait 1 minute before trying again.' }
 });
 
-const paymentRateLimit = rateLimiter({
+const paymentRateLimit = rateLimit({
   windowMs: 60 * 1000,
-  max: 15, // Max 15 creation or verify trials per minute
-  message: 'Payment requests throttled. Please slow down and try again.'
+  limit: 15, // Max 15 creation or verify trials per minute
+  legacyHeaders: false,
+  standardHeaders: 'draft-7',
+  message: { success: false, error: 'Payment requests throttled. Please slow down and try again.' }
 });
 
-const sensitiveOpsRateLimit = rateLimiter({
+const sensitiveOpsRateLimit = rateLimit({
   windowMs: 30 * 1000, // 30 seconds
-  max: 3,              // Max 3 sensitive operations per 30 seconds
-  message: 'Safety Threshold active! Please restrict the rate of your transactions or balance updates in order to help prevent platform abuse.'
+  limit: 3,              // Max 3 sensitive operations per 30 seconds
+  legacyHeaders: false,
+  standardHeaders: 'draft-7',
+  message: { success: false, error: 'Safety Threshold active! Please restrict the rate of your transactions or balance updates in order to help prevent platform abuse.' }
 });
 
 // --- API Router Endpoints ---
@@ -658,8 +665,8 @@ app.get('/api/auth/session', (req, res) => {
   res.json({ success: true, user: activeUser });
 });
 
-app.post('/api/auth/login', authRateLimit, (req, res) => {
-  const { email } = req.body;
+app.post('/api/auth/login', authRateLimit, async (req, res) => {
+  const { email, uid } = req.body;
   if (!email) {
     return res.status(400).json({ success: false, error: 'Email is required.' });
   }
@@ -673,12 +680,12 @@ app.post('/api/auth/login', authRateLimit, (req, res) => {
     const role = (trimmedEmail === 'arukiranreddy@gmail.com') ? 'admin' : 'user';
     
     user = {
-      id: `usr-${Date.now()}`,
+      id: uid || `usr-${Date.now()}`,
       name: name,
       email: trimmedEmail,
       role: role,
       kycStatus: role === 'admin' ? 'verified' : 'pending',
-      balance: 5000,
+      balance: 2000, // Credit new user's wallet with 2000 rupees upon successful sign-up
       referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
       isPremium: false,
       phone: '+91 98765 43210',
@@ -688,6 +695,19 @@ app.post('/api/auth/login', authRateLimit, (req, res) => {
       avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`
     };
     db.users.push(user);
+    
+    // Ensure the balance/user document is immediately initialized in Firestore
+    if (firebaseApp) {
+      try {
+        await firebaseApp.collection('users').doc(user.id).set(user, { merge: true });
+        console.log(`Successfully initialized user/balance doc in Firestore for ${user.email} with ₹2000`);
+      } catch (firestoreErr) {
+        console.error('Failed to initialize user document in Firestore:', firestoreErr);
+      }
+    }
+  } else if (uid && user.id !== uid) {
+    // Sync the local DB user ID with the real Firebase Auth UID if mismatched
+    user.id = uid;
   }
   
   db.activeUserId = user.id;
@@ -780,14 +800,15 @@ app.post('/api/auth/verify-otp', authRateLimit, async (req, res) => {
 
     const { name, phone, aadharNo, panNo, uploadedDoc } = stash.data || {};
     const finalRole = (trimmedEmail === 'arukiranreddy@gmail.com') ? 'admin' : 'user';
+    const uid = req.body.uid;
 
     user = {
-      id: `usr-${Date.now()}`,
+      id: uid || `usr-${Date.now()}`,
       name: name || trimmedEmail.split('@')[0],
       email: trimmedEmail,
       role: finalRole,
       kycStatus: finalRole === 'admin' ? 'verified' : 'pending',
-      balance: 5000, // starting credit ₹5,000 for verified traders
+      balance: 2000, // Credit new user's wallet with 2000 rupees upon successful Firebase sign-up
       referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
       isPremium: false,
       phone: phone || '',
@@ -801,15 +822,26 @@ app.post('/api/auth/verify-otp', authRateLimit, async (req, res) => {
     db.activeUserId = user.id;
     writeDB(db);
 
+    // Ensure the balance/user document is immediately initialized in Firestore
+    if (firebaseApp) {
+      try {
+        await firebaseApp.collection('users').doc(user.id).set(user, { merge: true });
+        console.log(`Successfully initialized user/balance doc in Firestore for OTP signup ${user.email} with ₹2000`);
+      } catch (firestoreErr) {
+        console.error('Failed to initialize OTP user document in Firestore:', firestoreErr);
+      }
+    }
+
     logEvent('warning', `New user registered. KYC Pending operator verification for ${user.name}`, 'Auth', user.name);
 
     return res.json({
       success: true,
       user,
-      message: `Account created successfully with ₹5,000 starting wallet credit! Your profile has been queued as 'KYC Pending' in the Admin Console.`
+      message: `Account created successfully with ₹2,000 starting wallet credit! Your profile has been queued as 'KYC Pending' in the Admin Console.`
     });
   } else {
     // Login flow
+    const uid = req.body.uid;
     if (!user) {
       // Auto-create basic user if not exists to make test flow flexible, otherwise standard login
       const prefix = trimmedEmail.split('@')[0];
@@ -817,12 +849,12 @@ app.post('/api/auth/verify-otp', authRateLimit, async (req, res) => {
       const role = (trimmedEmail === 'arukiranreddy@gmail.com') ? 'admin' : 'user';
 
       user = {
-        id: `usr-${Date.now()}`,
+        id: uid || `usr-${Date.now()}`,
         name: name,
         email: trimmedEmail,
         role: role,
         kycStatus: role === 'admin' ? 'verified' : 'pending',
-        balance: 5000,
+        balance: 2000, // Credit new user's wallet with 2000 rupees upon successful Firebase sign-up
         referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
         isPremium: false,
         phone: '+91 98765 43210',
@@ -832,6 +864,18 @@ app.post('/api/auth/verify-otp', authRateLimit, async (req, res) => {
         avatar: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`
       };
       db.users.push(user);
+      
+      // Ensure the balance/user document is immediately initialized in Firestore
+      if (firebaseApp) {
+        try {
+          await firebaseApp.collection('users').doc(user.id).set(user, { merge: true });
+          console.log(`Successfully initialized user/balance doc in Firestore for OTP login-create ${user.email} with ₹2000`);
+        } catch (firestoreErr) {
+          console.error('Failed to initialize OTP login-create user document in Firestore:', firestoreErr);
+        }
+      }
+    } else if (uid && user.id !== uid) {
+      user.id = uid;
     }
 
     db.activeUserId = user.id;

@@ -23,7 +23,7 @@ export default function Auth() {
         type: "success"
       });
       
-      login(result.user.email || 'user@example.com');
+      login(result.user.email || 'user@example.com', result.user.uid);
       const from = location.state?.from || '/';
       navigate(from, { replace: true });
     } catch (error: any) {

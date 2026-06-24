@@ -127,12 +127,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [user?.id]);
 
-  const login = async (email: string) => {
+  const login = async (email: string, uid?: string) => {
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email, uid })
       });
       const data = await res.json();
       if (data.success && data.user) {
@@ -145,12 +145,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.error('Remote login sync failed, falling back:', e);
       const role = email.includes('admin') ? 'admin' : 'user';
       setUser({ 
-        id: 'usr-1', 
+        id: uid || 'usr-1', 
         name: email.split('@')[0], 
         email, 
         role,
         kycStatus: role === 'admin' ? 'verified' : 'unverified', 
-        balance: 0, 
+        balance: 2000, 
         escrowBalance: 0, 
         referralCode: Math.random().toString(36).substring(2, 8).toUpperCase() 
       });
