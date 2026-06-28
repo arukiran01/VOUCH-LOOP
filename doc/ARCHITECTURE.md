@@ -40,7 +40,7 @@ The schema has been mapped explicitly in `supabase_schema.sql` at the root of th
 
 - **Cashback Engine:** When a user clicks an offer, create tracking link. When tracking pixel fires (via affiliate network), credit `pending` cashback. After return period (30-90 days), change to `completed`.
 - **Referral Engine:** Whenever a referred user transaction status changes to `completed`, calculate 10% commission, and credit referrer's wallet.
-- **Withdrawals:** Deduct from wallet immediately and mark status as `processing`. Admin verifies and initiates payout via PhonePe Payouts API or RazorpayX.
+- **Withdrawals:** Deduct from wallet immediately and mark status as `processing`. Admin verifies and initiates payout via PhonePe Payouts API.
 
 ## 5. Gemini AI Integration (Google AI Studio)
 

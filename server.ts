@@ -5,16 +5,9 @@ import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import { initFirebase, syncToFirebase, pullFromFirebase } from './firebase-sync';
 import nodemailer from 'nodemailer';
-import Razorpay from 'razorpay';
-import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 
 dotenv.config();
-
-const razorpayInstance = process.env.RAZORPAY_KEY_ID ? new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET || '',
-}) : null;
 
 // SMTP Transporter for Email Communications
 const mailTransporter = nodemailer.createTransport({
@@ -92,8 +85,8 @@ if (!fs.existsSync(path.dirname(DB_FILE))) {
 const INITIAL_DATABASE = {
   users: [
     { id: 'usr-1', name: 'Aruna Kiran', email: 'arukiranreddy@gmail.com', role: 'admin', kycStatus: 'verified', balance: 5000, referralCode: 'COUPONX99', isPremium: true },
-    { id: 'usr-2', name: 'Rohan Sharma', email: 'rohan@example.in', role: 'user', kycStatus: 'verified', balance: 2450, referralCode: 'ROHAN100', isPremium: false },
-    { id: 'usr-3', name: 'Priya Patel', email: 'priya@patel.co.in', role: 'user', kycStatus: 'pending', balance: 750, referralCode: 'PRIYA50', isPremium: true },
+    { id: 'usr-2', name: 'Rohan Sharma', email: 'rohan@example.in', role: 'user', kycStatus: 'verified', balance: 5000, referralCode: 'ROHAN100', isPremium: false },
+    { id: 'usr-3', name: 'Priya Patel', email: 'priya@patel.co.in', role: 'user', kycStatus: 'pending', balance: 5000, referralCode: 'PRIYA50', isPremium: true },
     { id: 'usr-4', name: 'Affiliate Partner', email: 'retail@coupons.in', role: 'user', kycStatus: 'verified', balance: 18400, referralCode: 'INDIA_DISCOUNT', isPremium: false }
   ],
   coupons: [
@@ -536,13 +529,14 @@ function readDB() {
       }
     }
 
-    // Ensure Aruna Kiran admin has starting balance of 5000 if currently 0
+    // Ensure all users have at least 5000 starting wallet balance
     if (parsed.users && Array.isArray(parsed.users)) {
-      const adminUser = parsed.users.find((u: any) => u.email === 'arukiranreddy@gmail.com');
-      if (adminUser && adminUser.balance === 0) {
-        adminUser.balance = 5000;
-        mutated = true;
-      }
+      parsed.users.forEach((u: any) => {
+        if (!u.balance || u.balance < 5000) {
+          u.balance = 5000;
+          mutated = true;
+        }
+      });
     }
     
     if (mutated) {
@@ -685,7 +679,7 @@ app.post('/api/auth/login', authRateLimit, async (req, res) => {
       email: trimmedEmail,
       role: role,
       kycStatus: role === 'admin' ? 'verified' : 'pending',
-      balance: 2000, // Credit new user's wallet with 2000 rupees upon successful sign-up
+      balance: 5000, // Credit new user's wallet with 5000 rupees upon successful sign-up
       referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
       isPremium: false,
       phone: '+91 98765 43210',
@@ -700,7 +694,7 @@ app.post('/api/auth/login', authRateLimit, async (req, res) => {
     if (firebaseApp) {
       try {
         await firebaseApp.collection('users').doc(user.id).set(user, { merge: true });
-        console.log(`Successfully initialized user/balance doc in Firestore for ${user.email} with ₹2000`);
+        console.log(`Successfully initialized user/balance doc in Firestore for ${user.email} with ₹5000`);
       } catch (firestoreErr) {
         console.error('Failed to initialize user document in Firestore:', firestoreErr);
       }
@@ -808,7 +802,7 @@ app.post('/api/auth/verify-otp', authRateLimit, async (req, res) => {
       email: trimmedEmail,
       role: finalRole,
       kycStatus: finalRole === 'admin' ? 'verified' : 'pending',
-      balance: 2000, // Credit new user's wallet with 2000 rupees upon successful Firebase sign-up
+      balance: 5000, // Credit new user's wallet with 5000 rupees upon successful Firebase sign-up
       referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
       isPremium: false,
       phone: phone || '',
@@ -826,7 +820,7 @@ app.post('/api/auth/verify-otp', authRateLimit, async (req, res) => {
     if (firebaseApp) {
       try {
         await firebaseApp.collection('users').doc(user.id).set(user, { merge: true });
-        console.log(`Successfully initialized user/balance doc in Firestore for OTP signup ${user.email} with ₹2000`);
+        console.log(`Successfully initialized user/balance doc in Firestore for OTP signup ${user.email} with ₹5000`);
       } catch (firestoreErr) {
         console.error('Failed to initialize OTP user document in Firestore:', firestoreErr);
       }
@@ -837,7 +831,7 @@ app.post('/api/auth/verify-otp', authRateLimit, async (req, res) => {
     return res.json({
       success: true,
       user,
-      message: `Account created successfully with ₹2,000 starting wallet credit! Your profile has been queued as 'KYC Pending' in the Admin Console.`
+      message: `Account created successfully with ₹5,000 starting wallet credit! Your profile has been queued as 'KYC Pending' in the Admin Console.`
     });
   } else {
     // Login flow
@@ -854,7 +848,7 @@ app.post('/api/auth/verify-otp', authRateLimit, async (req, res) => {
         email: trimmedEmail,
         role: role,
         kycStatus: role === 'admin' ? 'verified' : 'pending',
-        balance: 2000, // Credit new user's wallet with 2000 rupees upon successful Firebase sign-up
+        balance: 5000, // Credit new user's wallet with 5000 rupees upon successful Firebase sign-up
         referralCode: `VOUCH-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
         isPremium: false,
         phone: '+91 98765 43210',
@@ -869,7 +863,7 @@ app.post('/api/auth/verify-otp', authRateLimit, async (req, res) => {
       if (firebaseApp) {
         try {
           await firebaseApp.collection('users').doc(user.id).set(user, { merge: true });
-          console.log(`Successfully initialized user/balance doc in Firestore for OTP login-create ${user.email} with ₹2000`);
+          console.log(`Successfully initialized user/balance doc in Firestore for OTP login-create ${user.email} with ₹5000`);
         } catch (firestoreErr) {
           console.error('Failed to initialize OTP login-create user document in Firestore:', firestoreErr);
         }
@@ -1312,184 +1306,7 @@ app.post('/api/phonepe/callback', (req, res) => {
   }
 });
 
-// Razorpay Order Creation
-app.post('/api/wallet/razorpay/order', paymentRateLimit, async (req, res) => {
-  const { amount, purpose } = req.body;
-  const numAmt = Number(amount);
-  if (isNaN(numAmt) || numAmt <= 0) {
-    return res.status(400).json({ success: false, error: 'Invalid amount' });
-  }
-
-  // Razorpay standard checkout minimum amount is 100 paise (₹1.00)
-  if (numAmt * 100 < 100) {
-    return res.status(400).json({ success: false, error: 'Amount must be at least ₹1.00 (100 paise)' });
-  }
-
-  const db = readDB();
-  const activeUser = getActiveUser(db);
-  if (!activeUser) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
-  }
-
-  try {
-    let orderId = '';
-    let rzpAmount = Math.round(Number(amount) * 100);
-    let key_id = process.env.RAZORPAY_KEY_ID || 'rzp_test_simulated_key';
-
-    if (!razorpayInstance) {
-      orderId = `order_sim_${Date.now()}`;
-    } else {
-      const options = {
-        amount: rzpAmount,
-        currency: "INR",
-        receipt: `receipt_${Date.now()}`
-      };
-      const order = await razorpayInstance.orders.create(options);
-      orderId = order.id;
-    }
-
-    const txType = purpose === 'checkout' ? 'purchase' : 'deposit';
-
-    const tx = {
-      id: orderId, // using orderId as transaction ID for tracking
-      buyerId: activeUser.id,
-      buyerName: activeUser.name,
-      amount: Number(amount),
-      fee: 0,
-      type: txType as 'purchase' | 'deposit',
-      status: 'pending' as 'pending' | 'completed' | 'failed',
-      date: new Date().toISOString(),
-      paymentMethod: 'Razorpay',
-      upiId: '',
-    };
-    db.transactions.unshift(tx);
-    logEvent('info', `Created pending Razorpay ${txType} order of ₹${amount}.`, 'LedgerWallet', activeUser.name);
-    writeDB(db);
-
-    return res.json({
-      success: true,
-      transaction: tx,
-      orderId,
-      amount: rzpAmount,
-      currency: 'INR',
-      key_id
-    });
-  } catch (error) {
-    console.error('Razorpay Error:', error);
-    res.status(500).json({ success: false, error: 'Failed to create Razorpay order' });
-  }
-});
-
-// Razorpay Payment Verification
-app.post('/api/wallet/razorpay/verify', paymentRateLimit, async (req, res) => {
-  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, amount, purpose } = req.body;
-  
-  if (!amount || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-    return res.status(400).json({ success: false, error: 'Missing required payment details' });
-  }
-
-  const db = readDB();
-  const activeUser = getActiveUser(db);
-  if (!activeUser) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' });
-  }
-
-  let isAuthentic = true;
-
-  // If using actual Razorpay integration, properly verify the signature
-  if (razorpayInstance && process.env.RAZORPAY_KEY_SECRET && !razorpay_order_id.startsWith('order_sim_')) {
-    const expectedSignature = crypto
-      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-      .update(razorpay_order_id + '|' + razorpay_payment_id)
-      .digest('hex');
-
-    isAuthentic = expectedSignature === razorpay_signature;
-  }
-
-  if (isAuthentic) {
-    const numAmt = Number(amount);
-    
-    // Find the pending transaction associated with this order
-    const pendingTxIndex = db.transactions.findIndex((t: any) => t.id === razorpay_order_id && t.status === 'pending');
-    let tx;
-
-    if (pendingTxIndex !== -1) {
-      db.transactions[pendingTxIndex].status = 'completed';
-      db.transactions[pendingTxIndex].upiId = razorpay_payment_id || '';
-      tx = db.transactions[pendingTxIndex];
-    } else {
-      // Fallback
-      tx = {
-        id: razorpay_order_id || `tx-rzp-${Date.now()}`,
-        buyerId: activeUser.id,
-        buyerName: activeUser.name,
-        amount: numAmt,
-        fee: 0,
-        type: purpose === 'checkout' ? 'purchase' : 'deposit',
-        // @ts-ignore
-        status: 'completed',
-        date: new Date().toISOString(),
-        paymentMethod: 'Razorpay',
-        upiId: razorpay_payment_id || '',
-      };
-      db.transactions.unshift(tx);
-    }
-    
-    if (tx.type === 'purchase') {
-      logEvent('info', `Processed instant real-time Razorpay checkout of ₹${numAmt}.`, 'LedgerWallet', activeUser.name);
-      writeDB(db);
-
-      // Send email confirmation
-      if (activeUser.email) {
-        const html = `
-          <div style="font-family: sans-serif; max-w-md; margin: auto;">
-            <h2 style="color: #3399cc;">VouchLoop Checkout Receipt</h2>
-            <p>Hi ${activeUser.name},</p>
-            <p>Your payment of ₹${numAmt} for your recent purchase was successful.</p>
-            <p><strong>Transaction ID:</strong> ${tx.id}</p>
-            <p>Thank you for using VouchLoop!</p>
-          </div>
-        `;
-        sendSystemEmail(activeUser.email, `VouchLoop Checkout Receipt - ${tx.id}`, html).catch(console.error);
-      }
-
-      return res.json({
-        success: true,
-        transaction: tx,
-        user: activeUser,
-        message: `Successfully paid ₹${numAmt} via Razorpay.`
-      });
-    }
-
-    activeUser.balance += numAmt;
-    logEvent('info', `Processed instant real-time Razorpay deposit of ₹${numAmt}.`, 'LedgerWallet', activeUser.name);
-    writeDB(db);
-
-    // Send email confirmation
-    if (activeUser.email) {
-      const html = `
-        <div style="font-family: sans-serif; max-w-md; margin: auto;">
-          <h2 style="color: #3399cc;">VouchLoop Deposit Receipt</h2>
-          <p>Hi ${activeUser.name},</p>
-          <p>Your wallet top-up of ₹${numAmt} was successful.</p>
-          <p><strong>Transaction ID:</strong> ${tx.id}</p>
-          <p>Your new wallet balance is ₹${activeUser.balance}.</p>
-        </div>
-      `;
-
-      sendSystemEmail(activeUser.email, `VouchLoop Deposit Receipt - ${tx.id}`, html).catch(console.error);
-    }
-
-    res.json({
-      success: true,
-      transaction: tx,
-      user: activeUser,
-      message: `Successfully deposited ₹${numAmt} to wallet via Razorpay.`
-    });
-  } else {
-    res.status(400).json({ success: false, error: 'Invalid Payment Signature' });
-  }
-});
+// Razorpay Order and Verification endpoints removed in favor of direct wallet checkout.
 
 // Wallet Deposit API (Requires Admin Check for Cards and Cash Amount Validation)
 app.post('/api/wallet/deposit', sensitiveOpsRateLimit, (req, res) => {
@@ -1505,9 +1322,9 @@ app.post('/api/wallet/deposit', sensitiveOpsRateLimit, (req, res) => {
   }
   const numAmt = Number(amount);
 
-  const txStatus = (paymentMethod === 'PhonePe' || paymentMethod === 'UPI') ? 'completed' : 'pending';
+  const txStatus = 'completed';
 
-  // We set status as 'pending' for validation by admin console, unless PhonePe/UPI which is real-time
+  // Any deposit is instantly completed for virtual simulation and sandbox ease
   const tx = {
     id: `tx-dep-${Date.now()}`,
     buyerId: activeUser.id,
@@ -1515,10 +1332,10 @@ app.post('/api/wallet/deposit', sensitiveOpsRateLimit, (req, res) => {
     amount: numAmt,
     fee: 0,
     type: 'deposit' as const,
-    status: txStatus as 'completed' | 'pending',
+    status: 'completed' as const,
     date: new Date().toISOString(),
-    paymentMethod: paymentMethod || 'UPI',
-    upiId: upiId || '',
+    paymentMethod: paymentMethod || 'Instant Topup',
+    upiId: upiId || 'virtual-wallet-deposit',
     cardNumber: cardNumber ? `•••• •••• •••• ${cardNumber.slice(-4)}` : '',
     cardName: cardName || '',
     cardExpiry: cardExpiry || '',
@@ -1526,19 +1343,15 @@ app.post('/api/wallet/deposit', sensitiveOpsRateLimit, (req, res) => {
   };
 
   db.transactions.unshift(tx);
-  if (txStatus === 'completed') {
-    activeUser.balance += numAmt;
-    logEvent('info', `Processed instant real-time deposit of ₹${numAmt} via ${paymentMethod || 'UPI'}.`, 'LedgerWallet', activeUser.name);
-  } else {
-    logEvent('warning', `Logged client ledger deposit request of ₹${numAmt} via ${paymentMethod}. Pending Admin cash confirmation audit.`, 'LedgerWallet', activeUser.name);
-  }
+  activeUser.balance += numAmt;
+  logEvent('info', `Processed instant real-time deposit of ₹${numAmt} via ${paymentMethod || 'Instant Topup'}.`, 'LedgerWallet', activeUser.name);
   writeDB(db);
 
   res.json({ 
     success: true, 
     user: activeUser, 
     transaction: tx,
-    message: txStatus === 'completed' ? `Successfully deposited ₹${numAmt} to wallet via real-time gateway.` : `Payment request of ₹${numAmt} queued for compliance approval! VouchLoop administrators will verify the account details and activate your funds within 10 minutes.`
+    message: `Successfully deposited ₹${numAmt} to wallet via Instant Topup.`
   });
 });
 

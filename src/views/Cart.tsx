@@ -61,120 +61,7 @@ export default function Cart() {
     if (walletBalance >= total) {
       processCartPurchase();
     } else {
-      const deficit = total - walletBalance;
-      setPurchasing(true);
-      try {
-        const orderRes = await fetch('/api/wallet/razorpay/order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ amount: deficit, purpose: 'deposit' })
-        });
-        const orderData = await orderRes.json();
-
-        if (!orderData.success) throw new Error(orderData.error || 'Failed to create order');
-
-        // Setup dual-safe success handler
-        let hasCompleted = false;
-        let unsubscribe: (() => void) | null = null;
-
-        const triggerSuccessTransition = () => {
-          if (hasCompleted) return;
-          hasCompleted = true;
-          addFunds(deficit);
-          processCartPurchase();
-          if (unsubscribe) {
-            try {
-              unsubscribe();
-            } catch (err) {
-              console.warn("Unsubscribe error:", err);
-            }
-          }
-        };
-
-        // Setup Firestore listener for payment status with error boundary
-        unsubscribe = onSnapshot(doc(firestoreDB, "transactions", orderData.orderId), (docSnap) => {
-          if (docSnap.exists()) {
-            const txStatus = docSnap.data().status;
-            if (txStatus === 'completed') {
-              triggerSuccessTransition();
-            } else if (txStatus === 'failed') {
-              setPurchasing(false);
-              alert("Payment failed.");
-              if (unsubscribe) unsubscribe();
-            }
-          }
-        }, (err) => {
-          console.warn("Firestore listener restricted or offline. Relying on API verification.", err);
-        });
-
-        const options = {
-          key: orderData.key_id,
-          amount: orderData.amount,
-          currency: orderData.currency,
-          name: "VouchLoop",
-          description: "Fund Wallet & Checkout",
-          image: "https://upload.wikimedia.org/wikipedia/commons/e/e1/UPI-Logo-vector.svg",
-          order_id: orderData.orderId,
-          handler: async function (response: any) {
-            try {
-              const verifyRes = await fetch('/api/wallet/razorpay/verify', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  razorpay_order_id: response.razorpay_order_id,
-                  razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_signature: response.razorpay_signature || 'simulated_sig',
-                  amount: deficit,
-                  purpose: 'deposit'
-                })
-              });
-              const verifyData = await verifyRes.json();
-              if (!verifyData.success) {
-                throw new Error(verifyData.error || 'Payment verification failed');
-              }
-              // Immediately complete transaction upon successful direct API verification
-              triggerSuccessTransition();
-            } catch (err: any) {
-              setPurchasing(false);
-              alert('Verification Error: ' + err.message);
-            }
-          },
-          prefill: {
-            name: user?.name,
-            email: user?.email,
-          },
-          theme: {
-            color: "#3399cc"
-          },
-          modal: {
-            ondismiss: function() {
-              setPurchasing(false);
-            }
-          }
-        };
-
-        if (orderData.orderId.startsWith('order_sim_')) {
-          setTimeout(() => {
-             options.handler({
-               razorpay_payment_id: 'pay_sim_' + Date.now(),
-               razorpay_order_id: orderData.orderId,
-               razorpay_signature: 'sim_sig'
-             });
-          }, 1000);
-          return;
-        }
-
-        // @ts-ignore
-        const rzp1 = new window.Razorpay(options);
-        rzp1.on('payment.failed', function (response: any){
-          alert('Payment failed: ' + response.error.description);
-          setPurchasing(false);
-        });
-        rzp1.open();
-      } catch (e: any) {
-        alert("Error initializing checkout: " + e.message);
-        setPurchasing(false);
-      }
+      alert("Insufficient wallet balance. Please top up your wallet in the Wallet tab to complete this purchase.");
     }
   };
 
@@ -366,23 +253,14 @@ export default function Cart() {
                   <span className="font-bold text-gray-900">₹{walletBalance.toFixed(2)}</span>
                 </div>
                 {walletBalance >= total ? (
-                  <div className="text-xs text-green-600 bg-green-50 border border-green-105 rounded-lg p-2.5 flex items-center mt-2 font-medium">
+                  <div className="text-xs text-green-600 bg-green-50 border border-green-100 rounded-lg p-2.5 flex items-center mt-2 font-medium">
                     <span className="w-1.5 h-1.5 bg-green-500 rounded-full mr-2"></span>
                     Fully Covered by Wallet Balance
                   </div>
                 ) : (
-                  <div className="mt-3 pt-3 border-t border-gray-200">
-                    <div className="flex justify-between items-center text-xs text-gray-600 mb-1">
-                      <span>Amount from Wallet</span>
-                      <span>₹{walletBalance.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-xs font-semibold text-[#3399cc] mb-3">
-                      <span>Top-up via Razorpay (UPI/Card)</span>
-                      <span>₹{(total - walletBalance).toFixed(2)}</span>
-                    </div>
-                    <p className="text-[11px] text-gray-500 bg-blue-50/50 border border-blue-105 rounded-lg p-2">
-                      Pay securely via Razorpay to instantly fund your wallet and complete checkout.
-                    </p>
+                  <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg p-2.5 flex items-center mt-2 font-medium">
+                    <span className="w-1.5 h-1.5 bg-red-500 rounded-full mr-2"></span>
+                    Insufficient wallet balance. Please top up in your Wallet tab.
                   </div>
                 )}
               </div>
@@ -390,28 +268,16 @@ export default function Cart() {
 
             <button 
               onClick={handleCheckout}
-              disabled={purchasing}
-              className={`relative w-full text-white font-bold py-3 rounded-lg transition-all duration-300 flex justify-center items-center group disabled:opacity-80 overflow-hidden shadow-lg ${walletBalance >= total ? 'bg-teal-600 hover:bg-teal-700 shadow-teal-600/20' : 'bg-[#3399cc] hover:bg-[#287aa2] shadow-[#3399cc]/20'}`}
+              disabled={purchasing || walletBalance < total}
+              className={`relative w-full text-white font-bold py-3 rounded-lg transition-all duration-300 flex justify-center items-center group disabled:opacity-50 overflow-hidden shadow-lg ${walletBalance >= total ? 'bg-teal-600 hover:bg-teal-700 shadow-teal-600/20' : 'bg-gray-400 cursor-not-allowed shadow-gray-400/20'}`}
             >
-              {purchasing ? (
-                 <>
-                   <motion.div 
-                     initial={{ width: 0 }} 
-                     animate={{ width: "100%" }} 
-                     transition={{ duration: 1.5 }}
-                     className="absolute inset-0 bg-[#3399cc]"
-                   />
-                   <span className="relative z-10">Processing securely...</span>
-                 </>
-              ) : (
-                <span className="relative z-10 flex items-center justify-center w-full">
-                  {walletBalance >= total ? (
-                    <>Pay ₹{total.toFixed(2)} via Wallet <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" /></>
-                  ) : (
-                    <>Pay ₹{(total - walletBalance).toFixed(2)} via Razorpay <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" /></>
-                  )}
-                </span>
-              )}
+              <span className="relative z-10 flex items-center justify-center w-full">
+                {walletBalance >= total ? (
+                  <>Pay ₹{total.toFixed(2)} via Wallet <ArrowRight className="ml-2 w-4 h-4 group-hover:translate-x-1 transition-transform" /></>
+                ) : (
+                  <>Insufficient Wallet Balance</>
+                )}
+              </span>
             </button>
           </div>
         </div>

@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { Wallet as WalletIcon, ArrowUpRight, ArrowDownLeft, Clock, ShieldCheck, CreditCard, Building2, Smartphone } from 'lucide-react';
 import { Transaction } from '../types';
-import { RazorpayButton } from '../components/RazorpayButton';
 import useSWR, { mutate } from 'swr';
 import { TransactionHistory } from '../components/TransactionHistory';
 import { useQuery } from '@tanstack/react-query';
@@ -14,7 +13,6 @@ export default function Wallet() {
   const { user, walletBalance, addFunds, deductFunds, transactions, addTransaction, addNotification, syncSession } = useAppContext();
   const [addAmount, setAddAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
-  const [showPhonePe, setShowPhonePe] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [withdrawMode, setWithdrawMode] = useState<'bank' | 'upi'>('upi');
@@ -124,46 +122,43 @@ export default function Wallet() {
 
   if (!user) return null;
 
-  const handleAddMoney = () => {
-    if (parseFloat(addAmount) > 0) {
-      setShowPhonePe(true);
-      setShowWithdraw(false);
-    }
-  };
-
-  const handleTopupSuccess = (transaction: any) => {
+  const handleAddMoney = async () => {
     const amount = parseFloat(addAmount);
-    addFunds(amount);
-    
-    // Trigger immediate SWR mutation to re-fetch the user's wallet balance & transaction history
-    setIsPolling(true);
-    refetchWallet();
-    syncSession();
+    if (isNaN(amount) || amount <= 0) return;
 
-    const newTx = transaction || {
-      id: `TRX-${Math.floor(Math.random() * 1000000)}`,
-      type: 'deposit',
-      amount: amount,
-      date: new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }),
-      status: 'completed',
-      description: 'Wallet Top-up via Razorpay'
-    };
-    setDbTransactions(prev => [newTx, ...prev]);
-    addNotification({
-      title: "Deposit Successful",
-      desc: `₹${amount.toFixed(2)} has been instantly credited to your wallet.`,
-      type: "success"
-    });
-    setAddAmount('');
-    setShowPhonePe(false);
-
-    // Active polling to sync local storage balance with backend db
-    startPolling();
-
-    // Stop high frequency polling after 6 seconds as SWR wraps up verification
-    setTimeout(() => {
-      setIsPolling(false);
-    }, 6000);
+    setProcessing(true);
+    try {
+      const res = await fetch('/api/wallet/deposit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount,
+          paymentMethod: 'Instant Topup'
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        addFunds(amount);
+        addNotification({
+          title: "Deposit Successful",
+          desc: `₹${amount.toFixed(2)} has been instantly credited to your wallet.`,
+          type: "success"
+        });
+        setAddAmount('');
+        await syncSession();
+        refetchWallet();
+        if (data.transaction) {
+          setDbTransactions(prev => [data.transaction, ...prev]);
+        }
+      } else {
+        alert(data.error || 'Failed to deposit money');
+      }
+    } catch (err) {
+      console.error('Deposit error:', err);
+      alert('Error during deposit. Please try again.');
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const handleWithdraw = () => {
@@ -255,7 +250,7 @@ export default function Wallet() {
                   <ArrowDownLeft className="w-4 h-4 mr-1" /> Top Up
                 </button>
                 <button 
-                  onClick={() => { setShowWithdraw(true); setShowPhonePe(false); }}
+                  onClick={() => { setShowWithdraw(true); }}
                   disabled={liveWalletBalance < 250 || user.kycStatus === 'unverified'}
                   className="w-full bg-transparent border border-gray-500 hover:border-white disabled:opacity-50 text-white font-bold py-2 rounded-lg transition-colors flex items-center justify-center text-sm"
                 >
@@ -275,41 +270,6 @@ export default function Wallet() {
         </div>
 
         <div className="md:col-span-2 space-y-6">
-          {showPhonePe && (
-            <div className="bg-white border rounded-xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2">
-              <div className="bg-[#3399cc] p-4 text-white flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-lg tracking-wide">Razorpay</span>
-                  <span className="bg-white/20 text-xs px-2 py-0.5 rounded">Checkout</span>
-                </div>
-                <span className="font-medium">₹{addAmount}</span>
-              </div>
-              <div className="p-6 h-64 flex flex-col justify-center">
-                <div className="flex items-center justify-center mb-6">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
-                    <CreditCard className="w-8 h-8 text-gray-500" />
-                  </div>
-                </div>
-                <h3 className="text-center font-bold text-gray-800 mb-2">Secure Payment Check</h3>
-                <p className="text-center text-sm text-gray-500 mb-6">You are adding ₹{addAmount} to your VouchLoop wallet using Razorpay Payment Gateway.</p>
-                <div className="flex flex-col gap-2">
-                  <RazorpayButton
-                    amount={parseFloat(addAmount)}
-                    user={user}
-                    onSuccess={handleTopupSuccess}
-                    className="w-full bg-[#3399cc] hover:bg-[#287aa2] text-white font-bold py-3 rounded-lg transition-colors flex justify-center items-center gap-2"
-                  >
-                    <ShieldCheck className="w-5 h-5" />
-                    Pay ₹{addAmount} with Razorpay
-                  </RazorpayButton>
-                  <button onClick={() => setShowPhonePe(false)} className="w-full text-gray-500 text-sm hover:text-gray-700 font-medium py-2">
-                    Cancel Checkout
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
           {showWithdraw && (
             <div className="bg-white border rounded-xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2 p-6">
               <h3 className="font-bold text-lg text-gray-800 mb-4">Withdraw to Bank / UPI</h3>
